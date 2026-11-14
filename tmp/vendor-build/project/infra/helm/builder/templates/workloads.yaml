@@ -1,0 +1,95 @@
+{{- $root := . }}
+{{- range $role := list "web" "worker" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $root.Release.Name }}-{{ $role }}
+spec:
+  replicas: {{ if eq $role "web" }}{{ $root.Values.webReplicas }}{{ else }}{{ $root.Values.workerReplicas }}{{ end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $role }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: {{ $role }}
+    spec:
+      serviceAccountName: {{ $root.Values.serviceAccountName }}
+      terminationGracePeriodSeconds: 210
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if eq $role "worker" }}
+      initContainers:
+        - name: clamav-signatures
+          image: {{ $root.Values.image | quote }}
+          command: ["freshclam", "--datadir=/tmp/clamav", "--log=/tmp/clamav/freshclam.log", "--pid=/tmp/clamav/freshclam.pid"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 1000
+          volumeMounts:
+            - mountPath: /tmp/clamav
+              name: clamav
+      volumes:
+        - name: clamav
+          emptyDir: {}
+      {{- end }}
+      containers:
+        - name: {{ $role }}
+          image: {{ $root.Values.image | quote }}
+          {{- if eq $role "worker" }}
+          command: ["pnpm", "worker"]
+          volumeMounts:
+            - mountPath: /tmp/clamav
+              name: clamav
+          {{- else }}
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 3000
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 3000
+          {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ $root.Values.secretName }}
+          resources:
+            limits:
+              cpu: '2'
+              memory: 2Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 1000
+        {{- if $root.Values.cloudSql.instance }}
+        - name: cloud-sql-proxy
+          image: {{ $root.Values.cloudSql.proxyImage | quote }}
+          args: ["--private-ip", "--port=5432", {{ $root.Values.cloudSql.instance | quote }}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 65532
+        {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: web
+  ports:
+    - port: 80
+      targetPort: 3000

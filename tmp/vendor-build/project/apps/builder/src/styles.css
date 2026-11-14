@@ -1,0 +1,23 @@
+:root { color-scheme: light; font-family: Inter, system-ui, sans-serif; color: #152d32; background: #f3f6f5 }
+* { box-sizing: border-box }
+body { margin: 0 }
+header { background: #123c3d; color: #fff; font-size: 1.15rem; font-weight: 700; padding: 1.35rem max(5vw, 1rem) }
+header span { color: #bbd6ce; font-size: .9rem; font-weight: 400; margin-left: 1rem }
+main { margin: auto; max-width: 76rem; padding: 2rem 5vw 5rem }
+section, form { background: #fff; border: 1px solid #dce5e2; border-radius: .75rem; margin-block: 1rem; padding: 1rem }
+h1, h2, h3 { line-height: 1.2; margin-block: 0 .85rem }
+h1 { font-size: clamp(2rem, 5vw, 3.5rem) }
+form { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem }
+form h3, form > p, form ul { width: 100% }
+label { display: grid; gap: .3rem }
+input, textarea, select, button { font: inherit; border-radius: .35rem; padding: .55rem }
+input, textarea, select { border: 1px solid #95aba5; max-width: 100% }
+textarea { min-height: 5rem; width: min(36rem, 75vw) }
+button { border: 1px solid #205554; background: #205554; color: #fff; cursor: pointer }
+button:disabled { opacity: .55; cursor: wait }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid #1a7773; outline-offset: 3px }
+.case { background: #edf5f2; color: #153c3b; display: flex; justify-content: space-between; margin-block: .4rem; text-align: left; width: 100% }
+.metrics, .stages { display: flex; flex-wrap: wrap; gap: 1rem; list-style: none; padding: 1rem }
+.metrics div, .stages li { background: #edf5f2; border-radius: .4rem; flex: 1 1 8rem; padding: .85rem }
+.metrics strong, .stages strong { display: block }
+[role=alert] { background: #ffefeb; border-left: .3rem solid #a62a15; padding: .8rem }

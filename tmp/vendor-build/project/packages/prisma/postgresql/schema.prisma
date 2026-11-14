@@ -1,0 +1,640 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+  schemas = ["public"]
+}
+
+
+enum BuyerRole {
+  ADMIN
+  BUYER
+  REVIEWER
+  COMPLIANCE
+  AUDITOR
+  @@schema("public")
+}
+
+enum CaseStatus {
+  INVITED
+  DRAFT
+  SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+  @@schema("public")
+}
+
+enum TaxForm {
+  W9
+  W8BEN_E
+  OTHER_REVIEW
+  @@schema("public")
+}
+
+enum DocumentKind {
+  REGISTRATION
+  TAX
+  BANK
+  CERTIFICATE
+  OWNERSHIP
+  @@schema("public")
+}
+
+enum DocumentStatus {
+  RESERVED
+  UPLOADED
+  CLEAN
+  REJECTED
+  DELETED
+  @@schema("public")
+}
+
+enum CheckResult {
+  PASS
+  FAIL
+  REVIEW
+  UNAVAILABLE
+  @@schema("public")
+}
+
+enum SourceMode {
+  LIVE
+  MANUAL
+  FIXTURE
+  @@schema("public")
+}
+
+enum DecisionOutcome {
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+  CLEAR_HOLD
+  @@schema("public")
+}
+
+enum WorkKind {
+  SCAN
+  EXTRACT
+  VERIFY
+  NOTIFY
+  @@schema("public")
+}
+
+enum WorkState {
+  READY
+  RUNNING
+  SUCCEEDED
+  FAILED
+  @@schema("public")
+}
+
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  emailVerified Boolean @default(false)
+  image String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  session_user Session[] @relation("Session_user")
+  account_user Account[] @relation("Account_user")
+  membership_user Membership[] @relation("Membership_user")
+  onboardingCase_createdBy OnboardingCase[] @relation("OnboardingCase_createdBy")
+  caseAccess_user CaseAccess[] @relation("CaseAccess_user")
+  submission_submittedBy Submission[] @relation("Submission_submittedBy")
+  document_uploadedBy Document[] @relation("Document_uploadedBy")
+  decision_reviewer Decision[] @relation("Decision_reviewer")
+  @@schema("public")
+}
+
+model Session {
+  id String @id @default(cuid())
+  authChannel String @default("UNKNOWN")
+  token String @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId String
+  user User @relation("Session_user", fields: [userId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Account {
+  id String @id @default(cuid())
+  accountId String
+  providerId String
+  accessToken String?
+  refreshToken String?
+  idToken String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope String?
+  password String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([providerId, accountId])
+  userId String
+  user User @relation("Account_user", fields: [userId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Verification {
+  id String @id @default(cuid())
+  identifier String
+  value String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([identifier])
+  @@schema("public")
+}
+
+model Tenant {
+  id String @id @default(cuid())
+  name String
+  createdAt DateTime @default(now())
+  membershipRecords Membership[] @relation("Membership_tenant")
+  buyerEnrollmentRecords BuyerEnrollment[] @relation("BuyerEnrollment_tenant")
+  policyVersionRecords PolicyVersion[] @relation("PolicyVersion_tenant")
+  onboardingCaseRecords OnboardingCase[] @relation("OnboardingCase_tenant")
+  invitationRecords Invitation[] @relation("Invitation_tenant")
+  caseAccessRecords CaseAccess[] @relation("CaseAccess_tenant")
+  submissionRecords Submission[] @relation("Submission_tenant")
+  companyProfileRecords CompanyProfile[] @relation("CompanyProfile_tenant")
+  taxProfileRecords TaxProfile[] @relation("TaxProfile_tenant")
+  bankProfileRecords BankProfile[] @relation("BankProfile_tenant")
+  qualificationRecords Qualification[] @relation("Qualification_tenant")
+  ownershipEntityRecords OwnershipEntity[] @relation("OwnershipEntity_tenant")
+  ownershipEdgeRecords OwnershipEdge[] @relation("OwnershipEdge_tenant")
+  documentRecords Document[] @relation("Document_tenant")
+  extractionRecords Extraction[] @relation("Extraction_tenant")
+  checkRunRecords CheckRun[] @relation("CheckRun_tenant")
+  checkEvidenceRecords CheckEvidence[] @relation("CheckEvidence_tenant")
+  issueRecords Issue[] @relation("Issue_tenant")
+  decisionRecords Decision[] @relation("Decision_tenant")
+  supplierRecords Supplier[] @relation("Supplier_tenant")
+  workItemRecords WorkItem[] @relation("WorkItem_tenant")
+  outboxEventRecords OutboxEvent[] @relation("OutboxEvent_tenant")
+  notificationRecords Notification[] @relation("Notification_tenant")
+  idempotencyRecordRecords IdempotencyRecord[] @relation("IdempotencyRecord_tenant")
+  auditEventRecords AuditEvent[] @relation("AuditEvent_tenant")
+  @@schema("public")
+}
+
+model Membership {
+  id String @id @default(cuid())
+  tenantId String
+  role BuyerRole
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id])
+  userId String
+  user User @relation("Membership_user", fields: [userId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation("Membership_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model BuyerEnrollment {
+  id String @id @default(cuid())
+  tenantId String
+  emailKey String
+  role BuyerRole
+  expiresAt DateTime
+  acceptedAt DateTime?
+  revokedAt DateTime?
+  @@unique([tenantId, emailKey])
+  @@unique([tenantId, id])
+  tenant Tenant @relation("BuyerEnrollment_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model PolicyVersion {
+  id String @id @default(cuid())
+  tenantId String
+  version Int
+  category String
+  country String @db.Char(2)
+  definition Json
+  publishedAt DateTime
+  @@unique([tenantId, category, country, version])
+  @@unique([tenantId, id])
+  onboardingCase_policy OnboardingCase[] @relation("OnboardingCase_policy")
+  tenant Tenant @relation("PolicyVersion_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model OnboardingCase {
+  id String @id @default(cuid())
+  tenantId String
+  status CaseStatus @default(INVITED)
+  revision Int @default(0)
+  currentNumber Int?
+  category String
+  country String @db.Char(2)
+  requestedSite String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([tenantId, status, createdAt, id])
+  @@unique([tenantId, id])
+  policyId String
+  policy PolicyVersion @relation("OnboardingCase_policy", fields: [tenantId, policyId], references: [tenantId, id], onDelete: Restrict)
+  createdById String
+  createdBy User @relation("OnboardingCase_createdBy", fields: [createdById], references: [id], onDelete: Restrict)
+  invitation_case Invitation[] @relation("Invitation_case")
+  caseAccess_case CaseAccess[] @relation("CaseAccess_case")
+  submission_case Submission[] @relation("Submission_case")
+  tenant Tenant @relation("OnboardingCase_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Invitation {
+  id String @id @default(cuid())
+  tenantId String
+  recipientCiphertext Bytes
+  emailKey String
+  tokenHash String @unique
+  expiresAt DateTime
+  redeemedAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([tenantId, caseId, createdAt])
+  @@unique([tenantId, id])
+  caseId String
+  case OnboardingCase @relation("Invitation_case", fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("Invitation_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model CaseAccess {
+  id String @id @default(cuid())
+  tenantId String
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@unique([tenantId, caseId, userId])
+  @@unique([tenantId, id])
+  caseId String
+  case OnboardingCase @relation("CaseAccess_case", fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict)
+  userId String
+  user User @relation("CaseAccess_user", fields: [userId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation("CaseAccess_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Submission {
+  id String @id @default(cuid())
+  tenantId String
+  number Int
+  draftRevision Int @default(0)
+  submittedAt DateTime?
+  attestedAt DateTime?
+  @@unique([tenantId, caseId, number])
+  @@unique([tenantId, id])
+  caseId String
+  case OnboardingCase @relation("Submission_case", fields: [tenantId, caseId], references: [tenantId, id], onDelete: Restrict)
+  submittedById String?
+  submittedBy User? @relation("Submission_submittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
+  companyProfile CompanyProfile? @relation("CompanyProfile_submission")
+  taxProfile TaxProfile? @relation("TaxProfile_submission")
+  bankProfile BankProfile? @relation("BankProfile_submission")
+  qualification_submission Qualification[] @relation("Qualification_submission")
+  ownershipEntity_submission OwnershipEntity[] @relation("OwnershipEntity_submission")
+  ownershipEdge_submission OwnershipEdge[] @relation("OwnershipEdge_submission")
+  document_submission Document[] @relation("Document_submission")
+  checkRun_submission CheckRun[] @relation("CheckRun_submission")
+  issue_submission Issue[] @relation("Issue_submission")
+  decision_submission Decision[] @relation("Decision_submission")
+  supplier Supplier? @relation("Supplier_approved")
+  workItem_submission WorkItem[] @relation("WorkItem_submission")
+  tenant Tenant @relation("Submission_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model CompanyProfile {
+  id String @id @default(cuid())
+  tenantId String
+  submissionId String @unique
+  legalName String
+  registryId String
+  jurisdiction String
+  country String @db.Char(2)
+  addressLine1 String
+  addressLine2 String?
+  city String
+  postalCode String?
+  contactName String
+  contactEmail String
+  @@unique([tenantId, submissionId])
+  @@unique([tenantId, id])
+  submission Submission @relation("CompanyProfile_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("CompanyProfile_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model TaxProfile {
+  id String @id @default(cuid())
+  tenantId String
+  submissionId String @unique
+  formType TaxForm
+  taxIdCiphertext Bytes?
+  vatRegistered Boolean
+  vatTrnCiphertext Bytes?
+  keyVersion String?
+  @@unique([tenantId, submissionId])
+  @@unique([tenantId, id])
+  submission Submission @relation("TaxProfile_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("TaxProfile_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model BankProfile {
+  id String @id @default(cuid())
+  tenantId String
+  submissionId String @unique
+  beneficiary String
+  country String @db.Char(2)
+  currency String @db.Char(3)
+  accountCiphertext Bytes
+  routingCiphertext Bytes?
+  accountLast4 String @db.VarChar(4)
+  fingerprint String
+  keyVersion String
+  @@unique([tenantId, submissionId])
+  @@unique([tenantId, id])
+  submission Submission @relation("BankProfile_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("BankProfile_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Qualification {
+  id String @id @default(cuid())
+  tenantId String
+  activity String
+  site String
+  standard String
+  @@unique([tenantId, id])
+  submissionId String
+  submission Submission @relation("Qualification_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("Qualification_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model OwnershipEntity {
+  id String @id @default(cuid())
+  tenantId String
+  entityKey String
+  legalName String
+  registryId String?
+  country String @db.Char(2)
+  isVendor Boolean @default(false)
+  @@unique([tenantId, submissionId, entityKey])
+  @@unique([tenantId, id])
+  submissionId String
+  submission Submission @relation("OwnershipEntity_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  ownerEdges OwnershipEdge[] @relation("Edge_owner")
+  ownedEdges OwnershipEdge[] @relation("Edge_owned")
+  tenant Tenant @relation("OwnershipEntity_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model OwnershipEdge {
+  id String @id @default(cuid())
+  tenantId String
+  ownedEntityKey String
+  ownerEntityKey String
+  percentage Decimal @db.Decimal(7,4)
+  evidenceDocumentId String?
+  @@unique([tenantId, submissionId, ownerEntityKey, ownedEntityKey])
+  @@unique([tenantId, id])
+  owner OwnershipEntity @relation("Edge_owner", fields: [tenantId, submissionId, ownerEntityKey], references: [tenantId, submissionId, entityKey], onDelete: Restrict)
+  owned OwnershipEntity @relation("Edge_owned", fields: [tenantId, submissionId, ownedEntityKey], references: [tenantId, submissionId, entityKey], onDelete: Restrict)
+  submissionId String
+  submission Submission @relation("OwnershipEdge_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  evidence Document? @relation("Ownership_evidence", fields: [tenantId, submissionId, evidenceDocumentId], references: [tenantId, submissionId, id], onDelete: Restrict)
+  tenant Tenant @relation("OwnershipEdge_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Document {
+  id String @id @default(cuid())
+  tenantId String
+  kind DocumentKind
+  objectKey String
+  cleanGeneration String?
+  cleanKey String?
+  generation String?
+  sha256 String?
+  sizeBytes Int?
+  status DocumentStatus @default(RESERVED)
+  createdAt DateTime @default(now())
+  @@index([tenantId, submissionId, status])
+  @@unique([tenantId, id])
+  submissionId String
+  submission Submission @relation("Document_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  uploadedById String
+  uploadedBy User @relation("Document_uploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  @@unique([tenantId, submissionId, id])
+  ownershipEdges OwnershipEdge[] @relation("Ownership_evidence")
+  extractions Extraction[] @relation("Extraction_document")
+  checkEvidence_document CheckEvidence[] @relation("CheckEvidence_document")
+  tenant Tenant @relation("Document_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Extraction {
+  id String @id @default(cuid())
+  tenantId String
+  documentId String
+  extractorVersion String
+  modelVersion String?
+  outputRef String
+  createdAt DateTime @default(now())
+  @@unique([tenantId, documentId, extractorVersion])
+  @@unique([tenantId, id])
+  document Document @relation("Extraction_document", fields: [tenantId, documentId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("Extraction_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model CheckRun {
+  id String @id @default(cuid())
+  tenantId String
+  ruleKey String
+  ruleVersion String
+  attempt Int
+  result CheckResult
+  sourceMode SourceMode
+  sourceRef String?
+  evidenceJson Json?
+  checkedAt DateTime
+  validUntil DateTime?
+  reasonCode String
+  @@unique([tenantId, submissionId, ruleKey, attempt])
+  @@unique([tenantId, id])
+  submissionId String
+  submission Submission @relation("CheckRun_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  checkEvidence_checkRun CheckEvidence[] @relation("CheckEvidence_checkRun")
+  tenant Tenant @relation("CheckRun_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model CheckEvidence {
+  id String @id @default(cuid())
+  tenantId String
+  page Int?
+  fieldPath String
+  excerptRef String?
+  @@unique([tenantId, id])
+  checkRunId String
+  checkRun CheckRun @relation("CheckEvidence_checkRun", fields: [tenantId, checkRunId], references: [tenantId, id], onDelete: Restrict)
+  documentId String?
+  document Document? @relation("CheckEvidence_document", fields: [tenantId, documentId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("CheckEvidence_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Issue {
+  id String @id @default(cuid())
+  tenantId String
+  code String
+  ownerRole BuyerRole
+  supplierMessage String?
+  originIssueId String?
+  checkRule String?
+  openedAt DateTime @default(now())
+  resolvedAt DateTime?
+  resolution String?
+  @@unique([tenantId, id])
+  submissionId String
+  submission Submission @relation("Issue_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("Issue_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Decision {
+  id String @id @default(cuid())
+  tenantId String
+  outcome DecisionOutcome
+  rationale String
+  createdAt DateTime @default(now())
+  @@index([tenantId, submissionId, createdAt])
+  @@unique([tenantId, id])
+  submissionId String
+  submission Submission @relation("Decision_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  reviewerId String
+  reviewer User @relation("Decision_reviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation("Decision_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Supplier {
+  id String @id @default(cuid())
+  tenantId String
+  approvedSubmissionId String @unique
+  registryKey String
+  createdAt DateTime @default(now())
+  @@unique([tenantId, registryKey])
+  @@unique([tenantId, approvedSubmissionId])
+  @@unique([tenantId, id])
+  approvedSubmission Submission @relation("Supplier_approved", fields: [tenantId, approvedSubmissionId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("Supplier_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model WorkItem {
+  id String @id @default(cuid())
+  tenantId String
+  kind WorkKind
+  dedupeKey String
+  state WorkState @default(READY)
+  payload Json
+  attempt Int @default(0)
+  leaseOwner String?
+  leaseEpoch Int @default(0)
+  leaseUntil DateTime?
+  availableAt DateTime @default(now())
+  startedAt DateTime?
+  completedAt DateTime?
+  lastErrorCode String?
+  createdAt DateTime @default(now())
+  @@unique([tenantId, dedupeKey])
+  @@index([state, availableAt, leaseUntil])
+  @@unique([tenantId, id])
+  submissionId String?
+  submission Submission? @relation("WorkItem_submission", fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Restrict)
+  events OutboxEvent[] @relation("Outbox_work")
+  notification_workItem Notification[] @relation("Notification_workItem")
+  tenant Tenant @relation("WorkItem_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model OutboxEvent {
+  id String @id @default(cuid())
+  tenantId String
+  workItemId String
+  publishedAt DateTime?
+  leaseUntil DateTime?
+  createdAt DateTime @default(now())
+  @@index([publishedAt, leaseUntil, createdAt])
+  @@unique([tenantId, id])
+  workItem WorkItem @relation("Outbox_work", fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("OutboxEvent_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model Notification {
+  id String @id @default(cuid())
+  tenantId String
+  template String
+  recipientCiphertext Bytes
+  payloadCiphertext Bytes?
+  keyVersion String
+  providerMessageId String?
+  deliveryState String
+  @@unique([tenantId, workItemId])
+  createdAt DateTime @default(now())
+  @@unique([tenantId, id])
+  workItemId String
+  workItem WorkItem @relation("Notification_workItem", fields: [tenantId, workItemId], references: [tenantId, id], onDelete: Restrict)
+  tenant Tenant @relation("Notification_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model IdempotencyRecord {
+  id String @id @default(cuid())
+  tenantId String
+  actorId String
+  operation String
+  key String
+  requestHash String
+  response Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  @@unique([tenantId, actorId, operation, key])
+  @@unique([tenantId, id])
+  tenant Tenant @relation("IdempotencyRecord_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}
+
+model AuditEvent {
+  id String @id @default(cuid())
+  tenantId String
+  actorId String?
+  actorType String
+  action String
+  entityType String
+  entityId String
+  requestId String
+  safeMetadata Json
+  createdAt DateTime @default(now())
+  @@index([tenantId, entityType, entityId, createdAt])
+  @@unique([tenantId, id])
+  tenant Tenant @relation("AuditEvent_tenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  @@schema("public")
+}

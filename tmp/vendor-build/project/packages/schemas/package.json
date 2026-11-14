@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "exports": {
+    ".": "./index.ts"
+  },
+  "name": "@neo/schemas",
+  "private": true,
+  "type": "module"
+}

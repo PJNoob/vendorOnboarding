@@ -1,0 +1,8 @@
+cloudSql:
+  instance: ''
+  proxyImage: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.18.2
+image: vendor-onboarding:local
+secretName: vendor-onboarding
+serviceAccountName: vendor-onboarding
+webReplicas: 2
+workerReplicas: 1
