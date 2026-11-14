@@ -8,3 +8,8 @@
 /tmp/technical/render/
 /tmp/technical/render2/
 /tmp/technical/render3/
+.env
+.env.local
+.next/
+node_modules/
+*.tsbuildinfo

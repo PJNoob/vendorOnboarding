@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@neo/env": "workspace:*",
+    "@prisma/client": "6.19.0"
+  },
+  "devDependencies": {
+    "prisma": "6.19.0"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./client": "./client.ts",
+    "./repositories": "./repositories/index.ts"
+  },
+  "name": "@neo/prisma",
+  "private": true,
+  "scripts": {
+    "db:generate": "prisma generate --schema postgresql/schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema postgresql/schema.prisma",
+    "migrate:dev": "prisma migrate dev --create-only --schema postgresql/schema.prisma"
+  },
+  "type": "module"
+}

@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "@t3-oss/env-nextjs": "0.13.8",
+    "zod": "^4.1.0"
+  },
+  "exports": {
+    ".": "./env.ts"
+  },
+  "name": "@neo/env",
+  "private": true,
+  "type": "module"
+}

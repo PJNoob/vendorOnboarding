@@ -1,0 +1,11 @@
+{
+  "name": "vendor-onboarding",
+  "packageManager": "pnpm@10.15.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @neo/builder build",
+    "dev": "pnpm --filter @neo/builder dev",
+    "seed": "pnpm --filter @neo/builder seed",
+    "worker": "pnpm --filter @neo/builder worker"
+  }
+}
