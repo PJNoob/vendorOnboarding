@@ -22,6 +22,7 @@ export const env = createEnv({
     DATABASE_POOL_SIZE: z.coerce.number().int().positive(),
     DATABASE_URL: z.url(),
     DEMO_AUTH: z.enum(RuntimeValues.BOOLEAN).default('false'),
+    DEMO_LOGIN_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(16).max(256).optional()),
     DEMO_SCREENING: z.enum(RuntimeValues.BOOLEAN),
     EMAIL_FROM: z.email(),
     GCS_CLEAN_BUCKET: z.string().min(1),
