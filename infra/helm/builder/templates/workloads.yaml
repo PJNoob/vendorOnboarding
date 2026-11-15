@@ -17,7 +17,16 @@ spec:
         app.kubernetes.io/instance: {{ $root.Release.Name }}
         app.kubernetes.io/component: {{ $role }}
     spec:
-      serviceAccountName: {{ $root.Values.serviceAccountName }}
+      serviceAccountName: {{ if $root.Values.workloadIdentity.enabled }}vendor-onboarding-{{ $role }}{{ else }}{{ $root.Values.serviceAccountName }}{{ end }}
+      {{- if $root.Values.nodePool.enabled }}
+      nodeSelector:
+        workload: vendor-onboarding
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: vendor-onboarding
+          effect: NoSchedule
+      {{- end }}
       terminationGracePeriodSeconds: 210
       securityContext:
         fsGroup: 1000
@@ -35,19 +44,38 @@ spec:
           volumeMounts:
             - mountPath: /tmp/clamav
               name: clamav
+      {{- end }}
+      {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
       volumes:
+        {{- if eq $role "worker" }}
         - name: clamav
           emptyDir: {}
+        {{- end }}
+        {{- if $root.Values.redisCaSecret }}
+        - name: redis-ca
+          secret:
+            secretName: {{ $root.Values.redisCaSecret | quote }}
+        {{- end }}
       {{- end }}
       containers:
         - name: {{ $role }}
           image: {{ $root.Values.image | quote }}
           {{- if eq $role "worker" }}
           command: ["pnpm", "worker"]
+          {{- end }}
+          {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
           volumeMounts:
+            {{- if eq $role "worker" }}
             - mountPath: /tmp/clamav
               name: clamav
-          {{- else }}
+            {{- end }}
+            {{- if $root.Values.redisCaSecret }}
+            - mountPath: /var/run/redis-ca
+              name: redis-ca
+              readOnly: true
+            {{- end }}
+          {{- end }}
+          {{- if ne $role "worker" }}
           ports:
             - containerPort: 3000
           readinessProbe:
@@ -58,6 +86,11 @@ spec:
             httpGet:
               path: /api/health/live
               port: 3000
+          {{- end }}
+          {{- if $root.Values.redisCaSecret }}
+          env:
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/redis-ca/ca.pem
           {{- end }}
           envFrom:
             - secretRef:
@@ -86,6 +119,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Release.Name }}-web
+  {{- if .Values.ingress.enabled }}
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+  {{- end }}
 spec:
   selector:
     app.kubernetes.io/instance: {{ .Release.Name }}
