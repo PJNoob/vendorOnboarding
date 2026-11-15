@@ -1,10 +1,11 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 
 import { betterAuth } from 'better-auth'
 import { APIError, createAuthEndpoint } from 'better-auth/api'
 import { setSessionCookie } from 'better-auth/cookies'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins'
+import { z } from 'zod'
 
 import { demoAuthEnabled, env } from '@neo/env'
 import { prisma } from '@neo/prisma/client'
@@ -27,10 +28,26 @@ export class Authentication {
     return {
       id: 'demo-auth',
       endpoints: {
-        signInDemo: createAuthEndpoint(Authentication.DEMO_PATH, { method: 'POST' }, async (ctx) => {
+        signInDemo: createAuthEndpoint(Authentication.DEMO_PATH, {
+          method: 'POST',
+          body: z.union([
+            z.object({ email: z.email(), password: z.string().min(1).max(256) }),
+            z.object({ token: z.string().min(1).max(256) }),
+          ]),
+        }, async (ctx) => {
           const origin = new URL(env.APP_URL).origin
           if (!ctx.request || new URL(ctx.request.url).origin !== origin || ctx.request.headers.get('origin') !== origin) {
             throw APIError.fromStatus('FORBIDDEN', { message: 'Sign in from the local application.' })
+          }
+          if (!env.DEMO_LOGIN_TOKEN) {
+            throw APIError.fromStatus('SERVICE_UNAVAILABLE', { message: 'Configure DEMO_LOGIN_TOKEN in .env.local to use demo login.' })
+          }
+          const credential = 'token' in ctx.body ? ctx.body.token : ctx.body.password
+          const digest = (value: string) => createHash('sha256').update(value).digest()
+          const validToken = timingSafeEqual(digest(credential), digest(env.DEMO_LOGIN_TOKEN))
+          const validEmail = 'token' in ctx.body || Secrets.email(ctx.body.email) === demoIdentity.email
+          if (!validToken || !validEmail) {
+            throw APIError.fromStatus('UNAUTHORIZED', { message: 'The demo email or password is incorrect.' })
           }
           const user = await prisma.user.findFirst({
             where: {

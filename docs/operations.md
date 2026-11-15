@@ -28,7 +28,9 @@ Run `pnpm worker` in a second terminal with the same exported environment. The w
 
 ## Local demo sign-in
 
-Set `DEMO_AUTH=true` in `apps/builder/.env.local` with a loopback `APP_URL` such as `http://localhost:3000`. Google credentials can be left blank in this mode. After applying migrations, run `make seed` and start or restart the development server. Select **Sign in as demo admin** on the home page to open the Harbor BioLabs Demo workspace as `demo-admin@example.test`.
+Set `DEMO_AUTH=true` and `DEMO_LOGIN_TOKEN` (a locally generated secret of at least 16 characters) in `apps/builder/.env.local`, with a loopback `APP_URL` such as `http://localhost:3000`. Google credentials can be left blank in this mode. After applying migrations, run `make seed` and start or restart the development server. On the home page, use the demo form with email `demo-admin@example.test` and the value of `DEMO_LOGIN_TOKEN` as the password, then select **Sign in to demo workspace**. This opens the separate Harbor BioLabs Demo workspace.
+
+For local API testing, `POST /api/auth/sign-in/demo` also accepts JSON `{ "token": "<DEMO_LOGIN_TOKEN>" }`. Requests must originate from the configured application origin and include its `Origin` header. Login creates the normal HTTP-only session cookie; it does not send email. Keep the token in the ignored `.env.local` file.
 
 The seed command can be rerun. It creates the demo admin, workspace and policies without sending email. Set `DEMO_AUTH=false` and restart to turn off demo sign-in and invalidate demo access. Production always disables demo sign-in.
 
