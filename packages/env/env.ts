@@ -6,6 +6,18 @@ class RuntimeValues {
   static readonly HEX_KEY = /^[a-fA-F0-9]{64}$/
 }
 
+const googleClientId = z.string().trim().regex(/^\d+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/, 'Use a Google Web application OAuth client ID')
+const googleClientSecret = z.string().trim().min(1).refine(
+  (value) => !/placeholder|example|replace|your[-_ ]|^demo|^local/i.test(value),
+  'Use the matching Google OAuth client secret',
+)
+
+export function googleAuthConfigured(values: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string } = {
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+}) {
+  return googleClientId.safeParse(values.GOOGLE_CLIENT_ID).success && googleClientSecret.safeParse(values.GOOGLE_CLIENT_SECRET).success
+}
+
 export function demoAuthEnabled() {
   const { APP_URL, DEMO_AUTH, NODE_ENV } = process.env
   if (DEMO_AUTH !== 'true' || NODE_ENV === 'production' || !APP_URL || !URL.canParse(APP_URL)) return false
@@ -27,8 +39,8 @@ export const env = createEnv({
     EMAIL_FROM: z.email(),
     GCS_CLEAN_BUCKET: z.string().min(1),
     GCS_QUARANTINE_BUCKET: z.string().min(1),
-    GOOGLE_CLIENT_ID: demoAuthEnabled() ? z.string().optional() : z.string().min(1),
-    GOOGLE_CLIENT_SECRET: demoAuthEnabled() ? z.string().optional() : z.string().min(1),
+    GOOGLE_CLIENT_ID: demoAuthEnabled() ? z.string().optional() : googleClientId,
+    GOOGLE_CLIENT_SECRET: demoAuthEnabled() ? z.string().optional() : googleClientSecret,
     PII_KEY: z.string().regex(RuntimeValues.HEX_KEY),
     REDIS_URL: z.url(),
     RESEND_API_KEY: z.string().min(1),

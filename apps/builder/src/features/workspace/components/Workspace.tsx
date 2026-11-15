@@ -258,6 +258,12 @@ export class Workspace extends Component<{ demoAuth?: boolean }, State> {
 
   componentDidMount() {
     this.active = true
+    const authError = new URLSearchParams(window.location.search).get('error')
+    if (authError) {
+      this.setState({ error: authError === 'access_denied'
+        ? 'Google sign-in was cancelled or access was denied. Please try again.'
+        : 'Google sign-in could not be completed. Please try again or contact your workspace administrator.' })
+    }
     const token = window.location.hash.slice(1)
     if (token) {
       this.setState({ token })
@@ -292,7 +298,10 @@ export class Workspace extends Component<{ demoAuth?: boolean }, State> {
           await this.refresh()
         }, <><p className="muted">Enter the code sent to {this.signInEmail}.</p><label>Verification code<input autoComplete="one-time-code" inputMode="numeric" name="otp" required /></label><button type="button" className="text-button" onClick={() => this.setState({ otpSent: false })}>Use another email</button></>)}
         <div className="auth-divider">For the Harbor team</div>
-        {this.form('Continue with Google', async () => { await Workspace.AUTH.signIn.social({ callbackURL: '/', provider: 'google' }) }, null)}
+        {this.form('Continue with Google', async () => {
+          const result = await Workspace.AUTH.signIn.social({ callbackURL: '/', errorCallbackURL: '/', provider: 'google' })
+          if (result.error) throw new Error(result.error.message || 'Google sign-in could not be started. Please try again.')
+        }, null)}
         {this.props.demoAuth && this.form('Sign in to demo workspace', async (form) => {
           const result = await fetch('/api/auth/sign-in/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: String(form.get('demoEmail')), password: String(form.get('demoPassword')) }) })
           if (!result.ok) {

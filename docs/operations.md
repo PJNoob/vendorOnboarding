@@ -26,6 +26,18 @@ pnpm dev
 
 Run `pnpm worker` in a second terminal with the same exported environment. The worker needs Poppler, English Tesseract, ClamAV and current ClamAV signatures in `/tmp/clamav`. Install them locally or use the supplied container. It sends messages only when the application invokes an OTP or a queued notification.
 
+## Google sign-in setup and troubleshooting
+
+Google sign-in uses Better Auth and requires a real OAuth client. Values such as `local-google-client` are placeholders; sending them to Google causes **401 invalid_client: The OAuth client was not found**. The app rejects missing or malformed credentials before redirecting to Google. A correctly formatted client can still fail if it was deleted or its secret was revoked.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/auth/clients), select your project and configure Google Auth Platform branding and audience. Use an **External** audience to allow personal Gmail accounts. While the app is in Testing, add each account under Test users; publish the app when ready for general sign-in, completing any Google requirements.
+2. Create an OAuth client with application type **Web application**. For local development, add `http://localhost:3000` as an authorized JavaScript origin and **exactly** `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI. For production, add the HTTPS origin and its `/api/auth/callback/google` redirect URI. These must match `APP_URL`, including scheme, host and port.
+3. Put that client's ID and matching secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the ignored `apps/builder/.env.local` file, or the deployment's secret configuration. The client ID ends in `.apps.googleusercontent.com`. Never commit the secret or place it in a `NEXT_PUBLIC_` variable. Restart the web application after changing configuration.
+4. Set `BOOTSTRAP_ADMIN_EMAIL` to your first administrator's Google email and run `make seed` with the same environment. Existing administrators enroll additional team members from **Team & access**. Google authentication verifies identity; workspace access still requires enrollment. Supplier email OTP access remains available separately.
+5. Select **Continue with Google**, complete consent, and confirm you return to the workspace. Cancelled or failed callbacks return to the sign-in page with a readable error. If Google reports `invalid_client`, verify the client still exists and that both credentials belong to it. For `redirect_uri_mismatch`, compare the full registered callback URL. For `access_denied` in Testing, check the test-user list.
+
+Reference: [Better Auth Google configuration](https://better-auth.com/docs/authentication/google), [Google OAuth error handling](https://developers.google.com/identity/oauth2/web/guides/error).
+
 ## Local demo sign-in
 
 Set `DEMO_AUTH=true` and `DEMO_LOGIN_TOKEN` (a locally generated secret of at least 16 characters) in `apps/builder/.env.local`, with a loopback `APP_URL` such as `http://localhost:3000`. Google credentials can be left blank in this mode. After applying migrations, run `make seed` and start or restart the development server. On the home page, use the demo form with email `demo-admin@example.test` and the value of `DEMO_LOGIN_TOKEN` as the password, then select **Sign in to demo workspace**. This opens the separate Harbor BioLabs Demo workspace.
