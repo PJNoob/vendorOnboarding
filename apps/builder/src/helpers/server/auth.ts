@@ -1,13 +1,13 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 
 import { betterAuth } from 'better-auth'
-import { APIError, createAuthEndpoint } from 'better-auth/api'
+import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
 import { setSessionCookie } from 'better-auth/cookies'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins'
 import { z } from 'zod'
 
-import { demoAuthEnabled, env } from '@neo/env'
+import { demoAuthEnabled, env, googleAuthConfigured } from '@neo/env'
 import { prisma } from '@neo/prisma/client'
 
 import { demoIdentity } from './DemoIdentity'
@@ -18,7 +18,7 @@ export class Authentication {
   private static demoInstance: ReturnType<typeof Authentication.create> | undefined
   private static instance: ReturnType<typeof Authentication.create> | undefined
 
-  static readonly BUYER_CALLBACK = '/callback/google'
+  static readonly BUYER_CALLBACK = '/callback/:id'
   static readonly DEMO_PATH = '/sign-in/demo'
   static readonly OTP_PATH = '/sign-in/email-otp'
   static readonly OTP_SECONDS = 300
@@ -78,7 +78,7 @@ export class Authentication {
             before: async (session, context) => ({
               data: {
                 ...session,
-                authChannel: context?.path === Authentication.BUYER_CALLBACK ? Security.BUYER :
+                authChannel: context?.path === Authentication.BUYER_CALLBACK && context.params?.id === 'google' ? Security.BUYER :
                   context?.path === Authentication.OTP_PATH ? Security.SUPPLIER :
                   context?.path === Authentication.DEMO_PATH ? Security.DEMO : Security.UNKNOWN,
               },
@@ -86,6 +86,14 @@ export class Authentication {
           },
         },
       },
+      hooks: {
+        before: createAuthMiddleware(async (ctx) => {
+          if (ctx.path === '/sign-in/social' && ctx.body?.provider === 'google' && !googleAuthConfigured(env)) {
+            throw APIError.fromStatus('SERVICE_UNAVAILABLE', { message: 'Google sign-in is not configured. Contact your workspace administrator.' })
+          }
+        }),
+      },
+      onAPIError: { errorURL: '/' },
       plugins: [emailOTP({
         allowedAttempts: 5,
         expiresIn: Authentication.OTP_SECONDS,
@@ -98,8 +106,8 @@ export class Authentication {
         additionalFields: { authChannel: { defaultValue: Security.UNKNOWN, input: false, required: false, type: 'string' } },
         cookieCache: { enabled: false }, disableSessionRefresh: true, expiresIn: Authentication.SESSION_SECONDS,
       },
-      socialProviders: env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-        ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
+      socialProviders: googleAuthConfigured(env)
+        ? { google: { clientId: env.GOOGLE_CLIENT_ID!.trim(), clientSecret: env.GOOGLE_CLIENT_SECRET!.trim() } }
         : {},
       trustedOrigins: [new URL(env.APP_URL).origin],
     })
