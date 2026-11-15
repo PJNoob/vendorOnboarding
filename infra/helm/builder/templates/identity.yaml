@@ -1,0 +1,11 @@
+{{- if .Values.workloadIdentity.enabled }}
+{{- range $role := list "web" "worker" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vendor-onboarding-{{ $role }}
+  annotations:
+    iam.gke.io/gcp-service-account: {{ if eq $role "web" }}{{ required "webServiceAccount is required" $.Values.workloadIdentity.webServiceAccount | quote }}{{ else }}{{ required "workerServiceAccount is required" $.Values.workloadIdentity.workerServiceAccount | quote }}{{ end }}
+{{- end }}
+{{- end }}
