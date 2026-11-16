@@ -115,7 +115,7 @@ export class Queries {
     return {
       ...(agentReport ? { verificationReport: agentReport } : {}),
       case: { ...Queries.summary(row, companyProfile?.legalName),
-        supplierEmail: companyProfile?.contactEmail || (invite ? Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) : actor.email),
+        supplierEmail: companyProfile?.contactEmail || (invite ? Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) : row.createdBy.email),
         requesterName: row.createdBy?.name, requesterEmail: row.createdBy?.email,
         issueCount: snapshot.issue_submission.filter((issue) => !issue.resolvedAt).length,
         ...(snapshot.submittedAt ? { submittedAt: snapshot.submittedAt.toISOString() } : {}),
@@ -225,7 +225,7 @@ export class Queries {
     })
     const items = rows.slice(0, input.limit).map((row) => ({
       ...Queries.summary(row, row.submission_case[0]?.companyProfile?.legalName),
-      supplierEmail: row.submission_case[0]?.companyProfile?.contactEmail || (row.invitation_case[0] ? Secrets.decrypt(row.invitation_case[0].recipientCiphertext, actor.tenantId) : ''),
+      supplierEmail: row.submission_case[0]?.companyProfile?.contactEmail || (row.invitation_case[0] ? Secrets.decrypt(row.invitation_case[0].recipientCiphertext, actor.tenantId) : row.createdBy.email),
       requesterName: row.createdBy.name, requesterEmail: row.createdBy.email,
       issueCount: row.submission_case[0]?.issue_submission.length ?? 0,
       issueSummary: row.submission_case[0]?.issue_submission.map((issue) => issue.supplierMessage || 'Compliance review required.') ?? [],

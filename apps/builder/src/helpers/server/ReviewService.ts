@@ -111,8 +111,9 @@ export class ReviewService {
     const invite = await InvitationRepository.findFirst({
       orderBy: { createdAt: 'desc' }, where: { caseId, tenantId: actor.tenantId },
     }, tx)
-    Commands.require(invite, 'supplier recipient is unavailable')
-    await Commands.notify(actor, Secrets.decrypt(invite.recipientCiphertext, actor.tenantId),
+    const recipient = invite ? Secrets.decrypt(invite.recipientCiphertext, actor.tenantId)
+      : (await Commands.caseRow(actor, caseId, tx)).createdBy.email
+    await Commands.notify(actor, recipient,
       'Supplier onboarding update', key, `${text}\n\n${Commands.url('/')}`, tx, submissionId)
   }
 
