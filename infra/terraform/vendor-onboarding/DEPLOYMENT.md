@@ -1,5 +1,19 @@
 # Vendor onboarding deployment
 
+## Public endpoint on the existing cluster
+
+Production Helm values enable `https://vendor-onboarding.demo.asymptotiq.com` on the existing `yojnapath-dev-gke` cluster. The GCE Ingress uses the reserved global address `yojnapath-dev-vendor-https` (`8.228.226.95`), pod NEGs, a BackendConfig checking `/api/health/ready` on port 3000, a Google-managed certificate and a configurable HTTP-to-HTTPS redirect. The redirect is temporarily disabled in production values while certificate issuance is being validated; re-enable `ingress.redirectToHttps` after HTTPS works. This endpoint change does not require applying the Terraform below.
+
+In Cloudflare's `asymptotiq.com` zone, create an **A** record named **vendor-onboarding.demo** with content **8.228.226.95**, **DNS only** (grey cloud), and TTL **Auto**. Remove conflicting A/AAAA records for this hostname. Keep DNS only while using this Google-managed certificate; wait for the ManagedCertificate to report `Active` before testing HTTPS.
+
+`APP_URL` must be `https://vendor-onboarding.demo.asymptotiq.com` in Secret Manager's `vendor-app-config` and the Kubernetes application Secret. The chart also sets this URL explicitly for web and worker containers when ingress is enabled, keeping generated links and trusted origins aligned with the hostname.
+
+In the Google OAuth Web client, authorize JavaScript origin `https://vendor-onboarding.demo.asymptotiq.com` and redirect URI `https://vendor-onboarding.demo.asymptotiq.com/api/auth/callback/google`.
+
+Check `kubectl -n vendor-onboarding get ingress,managedcertificate` and `kubectl -n vendor-onboarding get deployments`. Preserve the live immutable application and document-service image digests when upgrading Helm for ingress changes.
+
+## Infrastructure bootstrap reference
+
 The infrastructure is **not ready to apply**. Complete the gaps listed in `README.md`, then review a real Terraform plan. In particular, do not move the existing Yojnapath project or attach Shared VPC until the migration preflight and host/service-project IAM are reviewed. Project migration can change inherited policies and moving back to No organization requires Google Cloud support.
 
 ## 1. Prepare Terraform

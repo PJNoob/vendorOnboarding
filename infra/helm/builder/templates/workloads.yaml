@@ -108,11 +108,15 @@ spec:
             periodSeconds: 30
             failureThreshold: 3
           {{- end }}
-          {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
+          {{- if or (eq $role "worker") $root.Values.redisCaSecret $root.Values.ingress.enabled }}
           env:
             {{- if eq $role "worker" }}
             - name: CERTIFICATE_RLM_PROVIDER
               value: {{ $root.Values.documentService.certificateRlmProvider | quote }}
+            {{- end }}
+            {{- if $root.Values.ingress.enabled }}
+            - name: APP_URL
+              value: {{ printf "https://%s" (required "ingress.hostname is required" $root.Values.ingress.hostname) | quote }}
             {{- end }}
             {{- if $root.Values.redisCaSecret }}
             - name: NODE_EXTRA_CA_CERTS
@@ -182,6 +186,7 @@ metadata:
   {{- if .Values.ingress.enabled }}
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-web"}'
   {{- end }}
 spec:
   selector:

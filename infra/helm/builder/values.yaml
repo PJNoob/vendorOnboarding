@@ -20,5 +20,7 @@ workloadIdentity:
   workerServiceAccount: ''
 ingress:
   enabled: false
+  redirectToHttps: true
+  certificateName: ''
   hostname: ''
   staticIpName: yojnapath-dev-vendor-https
