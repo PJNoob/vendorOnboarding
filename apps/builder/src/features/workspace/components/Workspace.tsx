@@ -3,7 +3,7 @@ import { emailOTPClient } from 'better-auth/client/plugins'
 import { Component, type FormEvent, type ReactNode } from 'react'
 import { ZodError, type z } from 'zod'
 
-import { inputs, type Output, Values } from '@neo/schemas'
+import { inputs, type Country, type Output, Values } from '@neo/schemas'
 
 import { ApiClient } from '@/lib/trpc'
 import { Icon } from './Icon'
@@ -14,7 +14,7 @@ type Detail = Output<'detail'>
 type Role = Output<'identity'>['memberships'][number]['role']
 type Action = (form: FormData) => Promise<void>
 type DraftChange = z.infer<typeof inputs.save>['change']
-type Field = { name: string; label: string; type?: string; options?: readonly string[] }
+type Field = { name: string; label: string; type?: string; options?: readonly string[]; allCountries?: boolean }
 type State = {
   view: 'overview' | 'suppliers' | 'reviews' | 'team'
   search: string
@@ -36,16 +36,16 @@ type State = {
   token: string
 }
 
-export class Workspace extends Component<{ demoAuth?: boolean }, State> {
+export class Workspace extends Component<{ demoAuth?: boolean; countries: Country[] }, State> {
   static readonly AUTH = createAuthClient({ plugins: [emailOTPClient()] })
   static readonly COMPANY: Field[] = [
     { label: 'Legal name', name: 'legalName' }, { label: 'Registration ID', name: 'registryId' },
-    { label: 'Jurisdiction', name: 'jurisdiction' }, { label: 'Country', name: 'country', options: Values.COUNTRIES },
+    { label: 'Jurisdiction', name: 'jurisdiction' }, { label: 'Country', name: 'country', allCountries: true },
     { label: 'Street address', name: 'addressLine1' }, { label: 'City', name: 'city' },
     { label: 'Contact name', name: 'contactName' }, { label: 'Contact email', name: 'contactEmail', type: 'email' },
   ]
   static readonly BANK: Field[] = [
-    { label: 'Beneficiary', name: 'beneficiary' }, { label: 'Country', name: 'country', options: Values.COUNTRIES },
+    { label: 'Beneficiary', name: 'beneficiary' }, { label: 'Country', name: 'country', allCountries: true },
     { label: 'Currency', name: 'currency' }, { label: 'Account number', name: 'account', type: 'password' },
     { label: 'Routing number', name: 'routing', type: 'password' },
   ]
@@ -77,13 +77,15 @@ export class Workspace extends Component<{ demoAuth?: boolean }, State> {
   }
 
   private fields(fields: Field[], values: Record<string, unknown> = {}) {
-    return fields.map(({ label, name, options, type }) => (
+    return fields.map(({ label, name, options, type, allCountries }) => {
+      if (allCountries) options = this.props.countries.map((country) => country.code)
+      return (
       <label key={name}>{label}
         {options
-          ? <select defaultValue={String(values[name] ?? options[0])} name={name}>{options.map((option) => <option key={option} value={option}>{({ US: 'United States', AE: 'United Arab Emirates', false: 'No', true: 'Yes', W9: 'W-9', W8BEN_E: 'W-8BEN-E', OTHER_REVIEW: 'Other (manual review)' } as Record<string, string>)[option] ?? Workspace.label(option)}</option>)}</select>
+          ? <select defaultValue={String(values[name] ?? options[0])} name={name}>{options.map((option) => <option key={option} value={option}>{(name === 'country' ? this.props.countries.find((country) => country.code === option)?.name : undefined) ?? ({ US: 'United States', AE: 'United Arab Emirates', false: 'No', true: 'Yes', W9: 'W-9', W8BEN_E: 'W-8BEN-E', OTHER_REVIEW: 'Other (manual review)' } as Record<string, string>)[option] ?? Workspace.label(option)}</option>)}</select>
           : <input defaultValue={type === 'password' ? '' : String(values[name] ?? '')} name={name} type={type ?? 'text'} />}
       </label>
-    ))
+    )})
   }
 
   private form(title: string, action: Action, body: ReactNode, key = title) {
@@ -228,7 +230,7 @@ export class Workspace extends Component<{ demoAuth?: boolean }, State> {
       {this.form('Save ownership', async (form) => {
         const value: unknown = JSON.parse(String(form.get('json')))
         await this.save(detail, inputs.save.shape.change.parse({ section: 'ownership', value }))
-      }, <OwnershipFields value={detail.values.ownership} />, `${detail.submissionId}-ownership`)}
+      }, <OwnershipFields countries={this.props.countries} value={detail.values.ownership} />, `${detail.submissionId}-ownership`)}
       {this.form('Upload supporting document', async (form) => {
         const file = form.get('file')
         if (!(file instanceof File) || !file.size) throw new Error('Select a PDF file to continue.')

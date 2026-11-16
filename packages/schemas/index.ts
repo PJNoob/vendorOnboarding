@@ -14,6 +14,9 @@ export class Values {
   static readonly TAX_FORMS = ['OTHER_REVIEW', 'W8BEN_E', 'W9'] as const
 }
 
+export type Country = { code: string; name: string }
+
+const countryCode = z.string().regex(/^[A-Z]{2}$/)
 const id = z.string().min(1).max(128)
 const message = z.string().trim().min(10).max(1000)
 const text = z.string().trim().min(1).max(Values.MAX_TEXT)
@@ -28,14 +31,14 @@ export const profiles = {
   bank: z.strictObject({
     account: z.string().regex(/^[A-Z0-9 -]{4,64}$/i),
     beneficiary: text,
-    country: z.enum(Values.COUNTRIES),
+    country: countryCode,
     currency: z.string().regex(/^[A-Z]{3}$/),
     // Routing formats depend on the bank jurisdiction.
     routing: text.optional(),
   }),
   company: z.strictObject({
     addressLine1: text, city: text, contactEmail: z.email(), contactName: text,
-    country: z.enum(Values.COUNTRIES), jurisdiction: text, legalName: text, registryId: text,
+    country: countryCode, jurisdiction: text, legalName: text, registryId: text,
   }),
   ownership: z.strictObject({
     edges: z.array(z.strictObject({
