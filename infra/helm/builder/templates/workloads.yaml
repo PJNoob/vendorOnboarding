@@ -7,12 +7,20 @@ metadata:
   name: {{ $root.Release.Name }}-{{ $role }}
 spec:
   replicas: {{ if eq $role "web" }}{{ $root.Values.webReplicas }}{{ else }}{{ $root.Values.workerReplicas }}{{ end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  progressDeadlineSeconds: 900
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ $root.Release.Name }}
       app.kubernetes.io/component: {{ $role }}
   template:
     metadata:
+      annotations:
+        vendor-onboarding/commit: {{ $root.Values.commitSha | quote }}
       labels:
         app.kubernetes.io/instance: {{ $root.Release.Name }}
         app.kubernetes.io/component: {{ $role }}
@@ -86,6 +94,19 @@ spec:
             httpGet:
               path: /api/health/live
               port: 3000
+          startupProbe:
+            httpGet:
+              path: /api/health/live
+              port: 3000
+            failureThreshold: 60
+            periodSeconds: 5
+          {{- else }}
+          readinessProbe:
+            exec:
+              command: ["node", "scripts/ci/runtime-health.mjs"]
+            timeoutSeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
           {{- end }}
           {{- if $root.Values.redisCaSecret }}
           env:
@@ -121,6 +142,12 @@ spec:
             httpGet:
               path: /health
               port: 8080
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 60
+            periodSeconds: 5
           resources:
             requests:
               cpu: 100m

@@ -5,7 +5,7 @@ WORKDIR /workspace
 RUN chown node:node /workspace
 COPY --chown=node:node . .
 USER node
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @neo/prisma db:generate
 RUN pnpm build
 EXPOSE 3000

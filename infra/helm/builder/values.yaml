@@ -6,6 +6,7 @@ secretName: vendor-onboarding
 serviceAccountName: vendor-onboarding
 webReplicas: 2
 workerReplicas: 1
+commitSha: ''
 documentService:
   image: vendor-document-verification:local
 

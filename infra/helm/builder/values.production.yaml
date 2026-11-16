@@ -1,0 +1,13 @@
+cloudSql:
+  instance: vendor-onboarding-514819:asia-south1:vendor-onboarding-postgres
+webReplicas: 2
+workerReplicas: 1
+nodePool:
+  enabled: true
+redisCaSecret: redis-ca
+workloadIdentity:
+  enabled: true
+  webServiceAccount: vendor-onboarding-web@vendor-onboarding-514819.iam.gserviceaccount.com
+  workerServiceAccount: vendor-onboarding-worker@vendor-onboarding-514819.iam.gserviceaccount.com
+ingress:
+  enabled: false
