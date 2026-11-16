@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm --filter @neo/builder build",
-    "dev": "pnpm --filter @neo/builder dev",
+    "dev": "node scripts/dev.mjs",
     "seed": "pnpm --filter @neo/builder seed",
     "worker": "pnpm --filter @neo/builder worker"
   }

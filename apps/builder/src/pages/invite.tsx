@@ -1,1 +1,1 @@
-export { Workspace as default } from '@/features/workspace/components/Workspace'
+export { default, getServerSideProps } from './index'

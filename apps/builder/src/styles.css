@@ -1041,6 +1041,24 @@ tbody tr:hover {
   border-radius:0 0 9px 9px;
 }
 
+.access-directory {
+  padding:0 23px 24px;
+}
+
+.access-directory h3 {
+  margin:24px 0 8px;
+  font-size:14px;
+}
+
+.access-directory td:last-child {
+  width:auto;
+  padding:14px 20px;
+}
+
+.access-directory .muted {
+  font-size:12px;
+}
+
 .detail-panel {
   overflow:hidden;
 }
@@ -2066,3 +2084,28 @@ summary {
 .profile-fields fieldset>.text-button {
   margin-top:13px;
 }
+
+.submitted-profile { margin:24px 0; }
+.submitted-section { padding:22px 0; border-bottom:1px solid var(--line); }
+.submitted-section h3 { margin:0 0 16px; }
+.submitted-section .submitted-section { padding:14px 0; }
+.submitted-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px 28px; margin:0; }
+.submitted-fields dt { color:#6b7770; font-size:12px; margin-bottom:6px; }
+.submitted-fields dd { margin:0; color:#23392d; overflow-wrap:anywhere; white-space:pre-wrap; }
+.decision-summary { border-radius:8px; padding:22px; margin-bottom:18px; }
+.decision-summary p,.decision-history p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.rejected-decision { background:#fff2ef; border:1px solid #edc4ba; color:#742d22; }
+.approved-decision { background:#edf7ef; border:1px solid #bedbc3; color:#255537; }
+.decision-history { padding:14px 0; border-bottom:1px solid var(--line); }
+.supplier-email { overflow-wrap:anywhere; max-width:230px; }
+.issue-count { display:inline-block; background:#fff1e8; border:1px solid #ebc9ad; border-radius:6px; padding:5px 10px; color:#8b461c; font-size:12px; }
+.request-clear { color:#37704a; font-size:12px; }
+.requester-inbox { margin:24px 0; }
+.request-card { display:flex; flex-wrap:wrap; justify-content:space-between; gap:18px; padding:20px 0; border-top:1px solid var(--line); }
+.request-card p { margin:8px 0; overflow-wrap:anywhere; }
+.request-card>div:last-of-type { display:flex; align-items:center; gap:12px; }
+.request-card>ul { flex-basis:100%; margin:0; color:#8b461c; }
+@media(max-width:650px) { .submitted-fields { grid-template-columns:1fr; } .request-card { display:block; } .request-card>div:last-of-type { margin-top:16px; } }
+
+.supplier-email { min-width:190px; white-space:normal; }
+.supplier-panel .table-scroll table { min-width:1040px; }
