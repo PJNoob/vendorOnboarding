@@ -73,3 +73,24 @@ test('requester dashboard includes supplier submission, service site, contacts a
   assert.match(result.items[0].issueSummary![0], /Bank details/)
   assert.ok(result.items[0].submittedAt)
 })
+
+test('buyer detail shows the supplier creator email for an invitation-free blank draft', async () => {
+  const value = setup('REVIEWER')
+  value.row.status = 'DRAFT'
+  value.row.createdBy = { name: 'Supplier', email: 'supplier-creator@example.test' }
+  value.snapshot.companyProfile = null as never
+  mock.method(InvitationRepository, 'findFirst', async () => null)
+  const detail = await Queries.detail({ id: 'reviewer', tenantId: 'tenant', channel: Security.BUYER, verified: true } as Actor, 'case')
+  assert.equal(detail.case.supplierEmail, 'supplier-creator@example.test')
+  assert.equal(detail.case.invitationDelivery, undefined)
+})
+
+test('buyer list shows supplier creator email before a self-started profile is completed', async () => {
+  const value = current()
+  mock.method(OnboardingCaseRepository, 'findMany', async () => [{ ...value.row, status: 'DRAFT',
+    createdBy: { name: 'Supplier', email: 'supplier-creator@example.test' }, invitation_case: [], submission_case: [],
+  }] as never)
+  const result = await Queries.list({ tenantId: 'tenant' } as Actor, { limit: 25 })
+  assert.equal(result.items[0].supplierEmail, 'supplier-creator@example.test')
+  assert.equal(result.items[0].status, 'DRAFT')
+})

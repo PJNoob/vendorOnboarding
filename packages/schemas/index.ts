@@ -75,6 +75,9 @@ export const inputs = {
     category: z.enum(Values.ACTIVITIES), country: countryCode,
     requestedSite: text, supplierEmail: z.email({ error: 'Enter a valid mail' }),
   }),
+  createSupplierApplication: command.extend({
+    category: z.enum(Values.ACTIVITIES), country: countryCode, requestedSite: text,
+  }),
   decide: change.extend({ outcome: z.enum(Values.DECISIONS), rationale: message, submissionId: id }),
   document: draft.extend({ documentId: id }),
   download: caseRef.extend({ documentId: id }),
