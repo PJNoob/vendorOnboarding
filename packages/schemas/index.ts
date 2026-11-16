@@ -4,7 +4,6 @@ export class Values {
   static readonly ACTIVITIES = ['CALIBRATION'] as const
   static readonly BUYER_ROLES = ['ADMIN', 'AUDITOR', 'BUYER', 'COMPLIANCE', 'REVIEWER'] as const
   static readonly CASE_STATES = ['APPROVED', 'DRAFT', 'INVITED', 'PENDING', 'REJECTED', 'SUBMITTED'] as const
-  static readonly COUNTRIES = ['AE', 'US'] as const
   static readonly DECISIONS = ['APPROVE', 'REJECT'] as const
   static readonly DOCUMENTS = ['BANK', 'CERTIFICATE', 'OWNERSHIP', 'REGISTRATION', 'TAX'] as const
   static readonly HOLD_DECISIONS = ['CLEARED', 'CONFIRMED'] as const
@@ -72,7 +71,7 @@ export const inputs = {
   audit: caseRef.extend(pagination),
   case: caseRef,
   create: command.extend({
-    category: z.enum(Values.ACTIVITIES), country: z.enum(Values.COUNTRIES),
+    category: z.enum(Values.ACTIVITIES), country: countryCode,
     requestedSite: text, supplierEmail: z.email(),
   }),
   decide: change.extend({ outcome: z.enum(Values.DECISIONS), rationale: message, submissionId: id }),
@@ -81,7 +80,7 @@ export const inputs = {
   enroll: command.extend({ email: z.email(), role: z.enum(Values.BUYER_ROLES) }),
   invite: change.extend({ invitationId: id }),
   list: z.strictObject({
-    country: z.enum(Values.COUNTRIES).optional(), // Omitted filters include every matching case.
+    country: countryCode.optional(), // Omitted filters include every matching case.
     ...pagination,
     search: text.optional(),
     status: z.enum(Values.CASE_STATES).optional(),

@@ -44,7 +44,7 @@ Reference: [Better Auth Google configuration](https://better-auth.com/docs/authe
 
 Set `REST_COUNTRIES_API_KEY` in the ignored `apps/builder/.env.local` file and in the `vendor-app-config` Secret Manager JSON. Sync that secret to Kubernetes and roll out the web deployment to load a new value. Keep the key server-only; do not use a `NEXT_PUBLIC_` variable.
 
-The server requests REST Countries v5 using bearer authentication, follows pagination in batches of 100, and caches the sorted country names and two-letter codes for six hours. Company, bank, and ownership forms use this directory. Records without a two-letter code are excluded. An API outage retains the last successful list, or falls back to US/UAE, and retries after a minute. Supplier invitation countries still require the existing published onboarding policies (US/UAE).
+The server requests REST Countries v5 using bearer authentication, follows pagination in batches of 100, and caches the sorted country names and two-letter codes for six hours. Supplier invitation, company, bank, and ownership forms use this directory. Records without a two-letter code are excluded. An API outage retains the last successful list, or falls back to US/UAE, and retries after a minute. Run the seed command after deployment to add the existing baseline onboarding policy for every country in the directory. Existing published policies are preserved.
 
 Reference: [REST Countries v5 documentation](https://restcountries.com/docs/countries).
 
