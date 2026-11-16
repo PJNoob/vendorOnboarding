@@ -5,6 +5,7 @@ import {
 import { type Input, Values } from '@neo/schemas'
 
 import { Commands } from './Commands'
+import { countryProvider } from './CountryProvider'
 import { demoIdentity } from './DemoIdentity'
 import { ReviewService } from './ReviewService'
 import { type Actor, Secrets, Security } from './Security'
@@ -70,6 +71,7 @@ export class TeamService {
   }
 
   static async seed() {
+    const countries = await countryProvider.list()
     await BaseRepository.runInTransaction(async (tx) => {
       const tenantId = TeamService.BOOTSTRAP_TENANT
       await TenantRepository.upsert({ create: { id: tenantId, name: 'Harbor BioLabs' }, update: {}, where: { id: tenantId } }, tx)
@@ -95,7 +97,7 @@ export class TeamService {
         tenantIds.push(demoIdentity.tenantId)
       }
       for (const policyTenantId of tenantIds) {
-        for (const country of Values.COUNTRIES) {
+        for (const { code: country } of countries) {
           const policy = { category: 'CALIBRATION', country, tenantId: policyTenantId, version: 1 }
           await PolicyVersionRepository.upsert({
             create: { ...policy, definition: { documents: [...Values.DOCUMENTS], rules: [...ReviewService.RULES] }, publishedAt: new Date() },

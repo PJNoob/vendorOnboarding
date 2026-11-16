@@ -37,9 +37,11 @@ for (const status of [401, 429, 503]) {
   })
 }
 
-test('profile countries accept international ISO codes while invitations retain published policy countries', () => {
+test('profile, invitation, and filter schemas accept international country codes', () => {
   assert.equal(profiles.bank.shape.country.safeParse('IN').success, true)
   assert.equal(profiles.company.shape.country.safeParse('GB').success, true)
   assert.equal(profiles.company.shape.country.safeParse('invalid').success, false)
-  assert.equal(inputs.create.shape.country.safeParse('IN').success, false)
+  assert.equal(inputs.create.shape.country.safeParse('IN').success, true)
+  assert.equal(inputs.list.shape.country.safeParse('IN').success, true)
+  assert.equal(inputs.create.shape.country.safeParse('invalid').success, false)
 })
