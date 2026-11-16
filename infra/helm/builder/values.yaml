@@ -6,3 +6,19 @@ secretName: vendor-onboarding
 serviceAccountName: vendor-onboarding
 webReplicas: 2
 workerReplicas: 1
+commitSha: ''
+documentService:
+  certificateRlmProvider: gemini
+  image: vendor-document-verification:local
+
+nodePool:
+  enabled: false
+redisCaSecret: ''
+workloadIdentity:
+  enabled: false
+  webServiceAccount: ''
+  workerServiceAccount: ''
+ingress:
+  enabled: false
+  hostname: ''
+  staticIpName: yojnapath-dev-vendor-https

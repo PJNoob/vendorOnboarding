@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { env } from '@neo/env'
 import { Prisma, type CheckResult, type DocumentKind, type SourceMode } from '@neo/prisma'
 
-import { reviewCertificateScope } from './CertificateScopeReview'
 import { Commands } from './Commands'
 import { screenOfac } from './OfacScreening'
 import { Secrets } from './Security'
@@ -122,6 +121,13 @@ export class Verification {
     return true
   }
 
+  static certificateStandards(current: Current) {
+    const { row, snapshot } = current
+    return [...new Set(snapshot.qualification_submission.filter((item) =>
+      Verification.compact(item.site) === Verification.compact(row.requestedSite) &&
+      Verification.compact(item.activity) === Verification.compact(row.category)).map(({ standard }) => standard))]
+  }
+
   static async evaluate(current: Current, documents: Map<DocumentKind, Evidence[]>) {
     const { row, snapshot } = current
     const { bankProfile, companyProfile, taxProfile } = snapshot
@@ -137,12 +143,10 @@ export class Verification {
       ? taxProfile.formType === 'W9' && /^\d{9}$/.test(taxId.replace(/-/g, '')) && Verification.has(taxId, tax)
       : taxProfile.formType === 'OTHER_REVIEW' && !taxProfile.vatRegistered ||
         taxProfile.vatRegistered && /^\d{15}$/.test(vat) && Verification.has(vat, tax)
-    const qualifications = snapshot.qualification_submission.filter((item) =>
-      Verification.compact(item.site) === Verification.compact(row.requestedSite) &&
-      Verification.compact(item.activity) === Verification.compact(row.category))
+    const standards = Verification.certificateStandards(current)
     const certificateFinding = Verification.local('CERTIFICATE_SCOPE', certificate.some((item) =>
       Verification.has(row.requestedSite, [item]) && Verification.has(row.category, [item]) &&
-      qualifications.some(({ standard }) => Verification.has(standard, [item]))),
+      standards.some((standard) => Verification.has(standard, [item]))),
       certificate, 'SCOPE_MISMATCH', 'Upload the certificate scope annex covering the requested site and calibration activity.')
     const findings: Finding[] = [
       Verification.local('BANK_BENEFICIARY', Verification.compact(bankProfile.beneficiary) === Verification.compact(companyProfile.legalName)
@@ -153,12 +157,6 @@ export class Verification {
       Verification.local('TAX_PROFILE', taxOk, tax, 'TAX_MISMATCH', 'Correct the tax details and provide matching tax evidence.'),
     ]
     const ownership = await Verification.ownership(current, documents.get('OWNERSHIP') ?? [])
-    const modelUrl = env.CERTIFICATE_RLM_URL
-    if (modelUrl && certificateFinding.result === 'FAIL' && current.policy.rules.includes(certificateFinding.rule)) {
-      certificateFinding.trace = { certificateScopeReview: await reviewCertificateScope(certificate, {
-        activity: row.category, site: row.requestedSite, standards: qualifications.map(({ standard }) => standard),
-      }, { name: env.CERTIFICATE_RLM_MODEL, url: modelUrl }) }
-    }
     return [...findings, ownership]
   }
 

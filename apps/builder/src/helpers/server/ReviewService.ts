@@ -1,11 +1,12 @@
 import {
-  CheckEvidenceRepository, CheckRunRepository, DecisionRepository, InvitationRepository,
+  ExtractionRepository, CheckEvidenceRepository, CheckRunRepository, DecisionRepository, InvitationRepository,
   IssueRepository, OnboardingCaseRepository, OutboxEventRepository, SupplierRepository,
   WorkItemRepository, type TransactionClient,
 } from '@neo/prisma/repositories'
 import type { Input } from '@neo/schemas'
 
 import { Commands } from './Commands'
+import { DocumentProcessor } from './DocumentProcessor'
 import { type Actor, Secrets, Security } from './Security'
 
 type Snapshot = Awaited<ReturnType<typeof Commands.current>>['snapshot']
@@ -110,8 +111,9 @@ export class ReviewService {
     const invite = await InvitationRepository.findFirst({
       orderBy: { createdAt: 'desc' }, where: { caseId, tenantId: actor.tenantId },
     }, tx)
-    Commands.require(invite, 'supplier recipient is unavailable')
-    await Commands.notify(actor, Secrets.decrypt(invite.recipientCiphertext, actor.tenantId),
+    const recipient = invite ? Secrets.decrypt(invite.recipientCiphertext, actor.tenantId)
+      : (await Commands.caseRow(actor, caseId, tx)).createdBy.email
+    await Commands.notify(actor, recipient,
       'Supplier onboarding update', key, `${text}\n\n${Commands.url('/')}`, tx, submissionId)
   }
 
@@ -140,6 +142,49 @@ export class ReviewService {
     Security.fresh(actor)
     return Commands.execute(actor, 'compliance.resolve', input, Commands.role(actor, ReviewService.COMPLIANCE),
       ReviewService.resolveInternal.bind(ReviewService, actor, input))
+  }
+
+  static reprocess(actor: Actor, input: Input<'reprocess'>) {
+    return Commands.execute(actor, 'work.reprocess', input, Commands.role(actor, ReviewService.ADMIN), async (tx) => {
+      const current = await Commands.current(actor, input.caseId, tx)
+      const { row, snapshot } = current
+      Commands.revision(row.revision, input.expectedCaseRevision)
+      Commands.require(snapshot.id === input.submissionId && snapshot.submittedAt && ['SUBMITTED', 'PENDING'].includes(row.status),
+        'select the current submitted application')
+      Commands.require(!snapshot.workItem_submission.some((item) => ['SCAN', 'EXTRACT', 'VERIFY'].includes(item.kind) && item.state === 'RUNNING'),
+        'wait for the active document processing job before reprocessing')
+      for (const document of snapshot.document_submission.filter((item) => item.status === 'CLEAN')) {
+        const extraction = await ExtractionRepository.findFirst({ where: {
+          tenantId: actor.tenantId, documentId: document.id, extractorVersion: DocumentProcessor.VERSION,
+        } }, tx)
+        if (extraction) continue
+        const key = DocumentProcessor.extractionKey(document.id)
+        const existing = snapshot.workItem_submission.find((item) => item.kind === 'EXTRACT' && item.dedupeKey === key)
+        if (existing) {
+          await WorkItemRepository.updateMany({ data: {
+            attempt: 0, availableAt: new Date(), completedAt: null, lastErrorCode: null,
+            leaseOwner: null, leaseUntil: null, state: 'READY',
+          }, where: { id: existing.id, tenantId: actor.tenantId } }, tx)
+          await OutboxEventRepository.create({ data: { tenantId: actor.tenantId, workItemId: existing.id } }, tx)
+        } else {
+          await Commands.enqueue(actor.tenantId, 'EXTRACT', key, { documentId: document.id }, tx, snapshot.id)
+        }
+      }
+      const work = snapshot.workItem_submission.find((item) => item.kind === 'VERIFY' && item.dedupeKey === snapshot.id)
+      if (work) {
+        await WorkItemRepository.updateMany({ data: {
+          attempt: 0, availableAt: new Date(), completedAt: null, lastErrorCode: null,
+          leaseOwner: null, leaseUntil: null, state: 'READY',
+        }, where: { id: work.id, tenantId: actor.tenantId } }, tx)
+        await OutboxEventRepository.create({ data: { tenantId: actor.tenantId, workItemId: work.id } }, tx)
+      } else {
+        await Commands.enqueue(actor.tenantId, 'VERIFY', snapshot.id, {}, tx, snapshot.id)
+      }
+      await OnboardingCaseRepository.updateMany({ data: { revision: { increment: 1 }, status: 'SUBMITTED' },
+        where: { id: row.id, tenantId: actor.tenantId } }, tx)
+      await Commands.audit(actor, 'DOCUMENT_PROCESSING_RESTARTED', row.id, tx)
+      return { id: snapshot.id, revision: row.revision + 1 }
+    })
   }
 
   static retry(actor: Actor, input: Input<'retry'>) {

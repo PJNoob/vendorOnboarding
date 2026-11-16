@@ -7,17 +7,34 @@ metadata:
   name: {{ $root.Release.Name }}-{{ $role }}
 spec:
   replicas: {{ if eq $role "web" }}{{ $root.Values.webReplicas }}{{ else }}{{ $root.Values.workerReplicas }}{{ end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  progressDeadlineSeconds: 900
   selector:
     matchLabels:
       app.kubernetes.io/instance: {{ $root.Release.Name }}
       app.kubernetes.io/component: {{ $role }}
   template:
     metadata:
+      annotations:
+        vendor-onboarding/commit: {{ $root.Values.commitSha | quote }}
       labels:
         app.kubernetes.io/instance: {{ $root.Release.Name }}
         app.kubernetes.io/component: {{ $role }}
     spec:
-      serviceAccountName: {{ $root.Values.serviceAccountName }}
+      serviceAccountName: {{ if $root.Values.workloadIdentity.enabled }}vendor-onboarding-{{ $role }}{{ else }}{{ $root.Values.serviceAccountName }}{{ end }}
+      {{- if $root.Values.nodePool.enabled }}
+      nodeSelector:
+        workload: vendor-onboarding
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: vendor-onboarding
+          effect: NoSchedule
+      {{- end }}
       terminationGracePeriodSeconds: 210
       securityContext:
         fsGroup: 1000
@@ -35,19 +52,38 @@ spec:
           volumeMounts:
             - mountPath: /tmp/clamav
               name: clamav
+      {{- end }}
+      {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
       volumes:
+        {{- if eq $role "worker" }}
         - name: clamav
           emptyDir: {}
+        {{- end }}
+        {{- if $root.Values.redisCaSecret }}
+        - name: redis-ca
+          secret:
+            secretName: {{ $root.Values.redisCaSecret | quote }}
+        {{- end }}
       {{- end }}
       containers:
         - name: {{ $role }}
           image: {{ $root.Values.image | quote }}
           {{- if eq $role "worker" }}
           command: ["pnpm", "worker"]
+          {{- end }}
+          {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
           volumeMounts:
+            {{- if eq $role "worker" }}
             - mountPath: /tmp/clamav
               name: clamav
-          {{- else }}
+            {{- end }}
+            {{- if $root.Values.redisCaSecret }}
+            - mountPath: /var/run/redis-ca
+              name: redis-ca
+              readOnly: true
+            {{- end }}
+          {{- end }}
+          {{- if ne $role "worker" }}
           ports:
             - containerPort: 3000
           readinessProbe:
@@ -58,6 +94,30 @@ spec:
             httpGet:
               path: /api/health/live
               port: 3000
+          startupProbe:
+            httpGet:
+              path: /api/health/live
+              port: 3000
+            failureThreshold: 60
+            periodSeconds: 5
+          {{- else }}
+          readinessProbe:
+            exec:
+              command: ["node", "scripts/ci/runtime-health.mjs"]
+            timeoutSeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          {{- end }}
+          {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
+          env:
+            {{- if eq $role "worker" }}
+            - name: CERTIFICATE_RLM_PROVIDER
+              value: {{ $root.Values.documentService.certificateRlmProvider | quote }}
+            {{- end }}
+            {{- if $root.Values.redisCaSecret }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/redis-ca/ca.pem
+            {{- end }}
           {{- end }}
           envFrom:
             - secretRef:
@@ -72,6 +132,39 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             runAsUser: 1000
+        {{- if eq $role "worker" }}
+        - name: document-verification
+          image: {{ $root.Values.documentService.image | quote }}
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: {{ $root.Values.secretName }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 60
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: '2'
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 1000
+        {{- end }}
         {{- if $root.Values.cloudSql.instance }}
         - name: cloud-sql-proxy
           image: {{ $root.Values.cloudSql.proxyImage | quote }}
@@ -86,6 +179,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Release.Name }}-web
+  {{- if .Values.ingress.enabled }}
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+  {{- end }}
 spec:
   selector:
     app.kubernetes.io/instance: {{ .Release.Name }}

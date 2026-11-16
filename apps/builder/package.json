@@ -9,8 +9,10 @@
     "@trpc/server": "^11.7.0",
     "better-auth": "^1.4.0",
     "bullmq": "^5.63.0",
+    "google-auth-library": "^9.15.1",
     "ioredis": "^5.8.0",
     "next": "^16.0.0",
+    "nodemailer": "^10.6.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "saxes": "^6.0.0",
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.9.0"
@@ -29,10 +32,10 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "node ../../scripts/run-with-logs.mjs application next dev",
     "seed": "node --env-file-if-exists=.env.local --import tsx src/helpers/server/seed.ts",
-    "start": "next start",
-    "worker": "tsx --tsconfig tsconfig.json src/helpers/server/worker-main.ts"
+    "start": "node ../../scripts/run-with-logs.mjs application next start",
+    "worker": "node --env-file-if-exists=.env.local ../../scripts/run-with-logs.mjs worker tsx --tsconfig tsconfig.json src/helpers/server/worker-main.ts"
   },
   "type": "module"
 }

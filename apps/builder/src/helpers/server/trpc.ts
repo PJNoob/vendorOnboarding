@@ -1,5 +1,6 @@
 import { initTRPC, TRPCError } from '@trpc/server'
 import superjson from 'superjson'
+import { ZodError } from 'zod'
 
 import { env } from '@neo/env'
 import type { BuyerRole } from '@neo/prisma'
@@ -13,6 +14,10 @@ export interface OpenApiMeta {
 
 const trpc = initTRPC.context<Context>().meta<OpenApiMeta>().create({
   errorFormatter({ error, shape }) {
+    if (error.code === 'BAD_REQUEST' && error.cause instanceof ZodError &&
+        error.cause.issues.some((issue) => issue.code === 'invalid_format' && issue.format === 'email')) {
+      return { ...shape, data: { code: shape.data.code, httpStatus: shape.data.httpStatus }, message: 'Enter a valid mail' }
+    }
     if (error.code !== 'INTERNAL_SERVER_ERROR') {
       return { ...shape, data: { code: shape.data.code, httpStatus: shape.data.httpStatus } }
     }

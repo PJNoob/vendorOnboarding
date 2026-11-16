@@ -90,3 +90,24 @@ test('keeps certificate evidence optional when the model fails', async (context)
     citations: [], model: model.name, status: 'unavailable',
   })
 })
+
+test('Gemini section selection and subcalls retain source quotes and the configured model', async () => {
+  const scopes: unknown[] = []
+  const result = await reviewCertificateScope(pages, scope, {
+    name: 'Gemini',
+    async generate(_instruction, data) {
+      const input = data as { index?: unknown; text?: string }
+      scopes.push(data)
+      const content = input.index ? { inspect: [1, 2] } : {
+        citations: input.text === pages[0].text
+          ? [{ field: 'standard', quote: 'ISO 17025' }]
+          : [{ field: 'site', quote: 'Example City' }, { field: 'activity', quote: 'invented' }],
+      }
+      return { model: 'configured-gemini-model', text: JSON.stringify(content) }
+    },
+  })
+  assert.equal(scopes.length, 3)
+  assert.equal(result.status, 'suggested')
+  assert.equal(result.model, 'configured-gemini-model')
+  assert.deepEqual(result.citations.map((citation) => citation.quote), ['Example City', 'ISO 17025'])
+})

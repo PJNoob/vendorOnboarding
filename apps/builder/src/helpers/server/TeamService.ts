@@ -1,10 +1,11 @@
 import { demoAuthEnabled, env } from '@neo/env'
 import {
-  BaseRepository, BuyerEnrollmentRepository, MembershipRepository, PolicyVersionRepository, TenantRepository,
+  BaseRepository, BuyerEnrollmentRepository, CaseAccessRepository, MembershipRepository, PolicyVersionRepository, TenantRepository,
 } from '@neo/prisma/repositories'
-import { type Input, Values } from '@neo/schemas'
+import { type Input, type Output, Values } from '@neo/schemas'
 
 import { Commands } from './Commands'
+import { countryProvider } from './CountryProvider'
 import { demoIdentity } from './DemoIdentity'
 import { ReviewService } from './ReviewService'
 import { type Actor, Secrets, Security } from './Security'
@@ -12,6 +13,24 @@ import { type Actor, Secrets, Security } from './Security'
 export class TeamService {
   static readonly ADMIN = ['ADMIN'] as const
   static readonly BOOTSTRAP_TENANT = 'harbor-biolabs'
+
+  static async directory(actor: Actor): Promise<Output<'teamDirectory'>> {
+    await Security.buyer(actor, TeamService.ADMIN)
+    const [members, suppliers] = await Promise.all([
+      MembershipRepository.findMany({
+        select: { id: true, role: true, user: { select: { name: true, email: true } } },
+        where: { active: true, tenantId: actor.tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+      CaseAccessRepository.findMany({
+        select: { id: true, caseId: true, case: { select: { requestedSite: true } }, user: { select: { name: true, email: true } } },
+        where: { revokedAt: null, tenantId: actor.tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    ])
+    return {
+      members: members.map(({ id, role, user }) => ({ id, role, ...user })),
+      suppliers: suppliers.map(({ id, caseId, case: row, user }) => ({ id, caseId, requestedSite: row.requestedSite, ...user })),
+    }
+  }
 
   static async accept(actor: Actor) {
     if (actor.channel !== Security.BUYER || !actor.verified) return
@@ -70,6 +89,7 @@ export class TeamService {
   }
 
   static async seed() {
+    const countries = await countryProvider.list()
     await BaseRepository.runInTransaction(async (tx) => {
       const tenantId = TeamService.BOOTSTRAP_TENANT
       await TenantRepository.upsert({ create: { id: tenantId, name: 'Harbor BioLabs' }, update: {}, where: { id: tenantId } }, tx)
@@ -95,7 +115,7 @@ export class TeamService {
         tenantIds.push(demoIdentity.tenantId)
       }
       for (const policyTenantId of tenantIds) {
-        for (const country of Values.COUNTRIES) {
+        for (const { code: country } of countries) {
           const policy = { category: 'CALIBRATION', country, tenantId: policyTenantId, version: 1 }
           await PolicyVersionRepository.upsert({
             create: { ...policy, definition: { documents: [...Values.DOCUMENTS], rules: [...ReviewService.RULES] }, publishedAt: new Date() },

@@ -23,6 +23,7 @@ export class OpenApi {
     '/v1/reviews/decide': { call: (caller: Caller, body: unknown) => caller.reviews.decide(inputs.decide.parse(body)), input: inputs.decide, method: 'post', output: outputs.ack },
     '/v1/reviews/resolveIssue': { call: (caller: Caller, body: unknown) => caller.reviews.resolveIssue(inputs.resolve.parse(body)), input: inputs.resolve, method: 'post', output: outputs.ack },
     '/v1/runs/get': { call: (caller: Caller, body: unknown) => caller.runs.get(inputs.case.parse(body)), input: inputs.case, method: 'get', output: outputs.run },
+    '/v1/team/directory': { call: (caller: Caller, body: unknown) => caller.team.directory(inputs.none.parse(body)), input: inputs.none, method: 'get', output: outputs.teamDirectory },
     '/v1/team/enroll': { call: (caller: Caller, body: unknown) => caller.team.enroll(inputs.enroll.parse(body)), input: inputs.enroll, method: 'post', output: outputs.ack },
     '/v1/team/revoke': { call: (caller: Caller, body: unknown) => caller.team.revoke(inputs.member.parse(body)), input: inputs.member, method: 'post', output: outputs.ack },
     '/v1/team/setRole': { call: (caller: Caller, body: unknown) => caller.team.setRole(inputs.role.parse(body)), input: inputs.role, method: 'post', output: outputs.ack },
@@ -58,11 +59,16 @@ export class OpenApi {
     const query = Object.fromEntries(Object.entries(req.query).filter(([key]) => key !== 'trpc').map(([key, value]) => [key, key === 'limit' ? Number(value) : value]))
     const context = await ContextFactory.create({ req })
     const parsed = route.input.safeParse(route.method === 'get' ? query : req.body)
-    if (!parsed.success) return res.status(400).json({ code: 'BAD_REQUEST' })
+    if (!parsed.success) {
+      console.error(JSON.stringify({ event: 'api.error', code: 'BAD_REQUEST', path, type: req.method }))
+      const invalidEmail = parsed.error.issues.some((issue) => issue.code === 'invalid_format' && issue.format === 'email')
+      return res.status(400).json({ code: 'BAD_REQUEST', message: invalidEmail ? 'Enter a valid mail' : 'Check your details' })
+    }
     const caller = publicRouter.createCaller(context)
     return route.call(caller, parsed.data).then(
       (data) => res.json(data),
       (error: unknown) => {
+        console.error(JSON.stringify({ event: 'api.error', code: error instanceof TRPCError ? error.code : 'INTERNAL_SERVER_ERROR', path, type: req.method }))
         if (error instanceof TRPCError && error.code !== 'INTERNAL_SERVER_ERROR') {
           return res.status(getHTTPStatusCodeFromError(error)).json({ code: error.code, message: error.message })
         }

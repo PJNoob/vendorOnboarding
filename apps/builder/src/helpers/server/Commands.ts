@@ -30,7 +30,7 @@ export class Commands {
 
   static async caseRow(actor: Actor, caseId: string, tx?: TransactionClient) {
     const row = await OnboardingCaseRepository.findFirst({
-      include: { policy: true }, where: { id: caseId, tenantId: actor.tenantId },
+      include: { policy: true, createdBy: { select: { name: true, email: true } } }, where: { id: caseId, tenantId: actor.tenantId },
     }, tx)
     if (!row || row.currentNumber === null) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'case is unavailable' })
@@ -46,7 +46,7 @@ export class Commands {
           include: { checkEvidence_checkRun: true },
           orderBy: { attempt: 'desc' },
         },
-        companyProfile: true, decision_submission: { orderBy: { createdAt: 'desc' } },
+        companyProfile: true, decision_submission: { include: { reviewer: { select: { name: true } } }, orderBy: { createdAt: 'desc' } },
         document_submission: { where: { status: { not: 'DELETED' } } },
         issue_submission: true, ownershipEdge_submission: true, ownershipEntity_submission: true,
         qualification_submission: true, taxProfile: true, workItem_submission: true,
@@ -97,9 +97,12 @@ export class Commands {
 
   static async notify(actor: Actor, email: string, template: string, key: string, body: string, tx: TransactionClient, submissionId?: string) {
     const work = await Commands.enqueue(actor.tenantId, 'NOTIFY', key, {}, tx, submissionId)
+    const captured = process.env.LOCAL_CAPTURE_TEST_EMAILS === 'true' && process.env.NODE_ENV !== 'production' &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(new URL(env.APP_URL).hostname) && email.toLowerCase().endsWith('.test')
+    if (captured) await WorkItemRepository.updateMany({ data: { state: 'SUCCEEDED', completedAt: new Date() }, where: { id: work.id, tenantId: actor.tenantId } }, tx)
     const scope = `${actor.tenantId}/${work.id}`
     await NotificationRepository.create({ data: {
-      deliveryState: 'QUEUED', keyVersion: Secrets.KEY_VERSION,
+      deliveryState: captured ? 'CAPTURED_TEST' : 'QUEUED', keyVersion: Secrets.KEY_VERSION,
       payloadCiphertext: Secrets.encrypt(body, scope), recipientCiphertext: Secrets.encrypt(email, scope),
       template, tenantId: actor.tenantId, workItemId: work.id,
     } }, tx)

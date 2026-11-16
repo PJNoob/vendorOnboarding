@@ -3,7 +3,20 @@ import { z } from 'zod'
 
 class RuntimeValues {
   static readonly BOOLEAN = ['false', 'true'] as const
+  static readonly MAIL_PROVIDERS = ['gmail', 'resend'] as const
   static readonly HEX_KEY = /^[a-fA-F0-9]{64}$/
+}
+
+const googleClientId = z.string().trim().regex(/^\d+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/, 'Use a Google Web application OAuth client ID')
+const googleClientSecret = z.string().trim().min(1).refine(
+  (value) => !/placeholder|example|replace|your[-_ ]|^demo|^local/i.test(value),
+  'Use the matching Google OAuth client secret',
+)
+
+export function googleAuthConfigured(values: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string } = {
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+}) {
+  return googleClientId.safeParse(values.GOOGLE_CLIENT_ID).success && googleClientSecret.safeParse(values.GOOGLE_CLIENT_SECRET).success
 }
 
 export function demoAuthEnabled() {
@@ -20,6 +33,7 @@ export const env = createEnv({
     BETTER_AUTH_SECRET: z.string().min(32),
     BOOTSTRAP_ADMIN_EMAIL: z.email(),
     CERTIFICATE_RLM_MODEL: z.string().trim().min(1).max(128).default('qwen3:8b'),
+    CERTIFICATE_RLM_PROVIDER: z.enum(['ollama', 'gemini', 'disabled']).default('ollama'),
     CERTIFICATE_RLM_URL: z.preprocess((value) => value === '' ? undefined : value, z.url({ protocol: /^https?$/ }).optional()),
     DATABASE_POOL_SIZE: z.coerce.number().int().positive(),
     DATABASE_URL: z.url(),
@@ -27,13 +41,21 @@ export const env = createEnv({
     DEMO_LOGIN_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(16).max(256).optional()),
     DEMO_SCREENING: z.enum(RuntimeValues.BOOLEAN),
     EMAIL_FROM: z.email(),
+    DOCUMENT_SERVICE_URL: z.url().default('http://127.0.0.1:8080'),
+    DOCUMENT_SERVICE_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(32).optional()),
     GCS_CLEAN_BUCKET: z.string().min(1),
     GCS_QUARANTINE_BUCKET: z.string().min(1),
-    GOOGLE_CLIENT_ID: demoAuthEnabled() ? z.string().optional() : z.string().min(1),
-    GOOGLE_CLIENT_SECRET: demoAuthEnabled() ? z.string().optional() : z.string().min(1),
+    // Gmail credentials are unused when Resend is selected.
+    GMAIL_APP_PASSWORD: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    GOOGLE_CLIENT_ID: demoAuthEnabled() ? z.string().optional() : googleClientId,
+    GOOGLE_CLIENT_SECRET: demoAuthEnabled() ? z.string().optional() : googleClientSecret,
+    // Preserve the existing Resend configuration for local environments.
+    MAIL_PROVIDER: z.enum(RuntimeValues.MAIL_PROVIDERS).default('resend'),
     PII_KEY: z.string().regex(RuntimeValues.HEX_KEY),
     REDIS_URL: z.url(),
     RESEND_API_KEY: z.string().min(1),
+    MAILTESTER_NINJA_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
+    REST_COUNTRIES_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     SCREENING_PROVIDER: z.enum(['http', 'ofac']).default('http'),
     SCREENING_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
     SCREENING_URL: z.preprocess((value) => value === '' ? undefined : value, z.url().optional()),

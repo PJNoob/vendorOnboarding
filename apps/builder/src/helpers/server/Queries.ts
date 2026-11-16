@@ -1,14 +1,18 @@
 import {
   AuditEventRepository, BaseRepository, DocumentRepository, InvitationRepository, MembershipRepository, OnboardingCaseRepository,
-  CaseAccessRepository,
+  CaseAccessRepository, NotificationRepository,
 } from '@neo/prisma/repositories'
 import { type Input, type Output, Values } from '@neo/schemas'
 
+import { env } from '@neo/env'
 import { Commands } from './Commands'
+import { DocumentVerification } from './DocumentVerification'
+import { DocumentProcessor } from './DocumentProcessor'
 import { demoIdentity } from './DemoIdentity'
 import { ObjectStore } from './Providers'
+import { localGoogleStorageEnabled } from './LocalGoogleStorage'
 import { ReviewEvidence } from './ReviewEvidence'
-import { type Actor, Security } from './Security'
+import { type Actor, Secrets, Security } from './Security'
 
 type Current = Awaited<ReturnType<typeof Commands.current>>
 
@@ -26,12 +30,17 @@ export class Queries {
   }
 
   private static stages({ policy, row, snapshot }: Current): Output<'run'> {
-    const failed = snapshot.workItem_submission.some((item) => item.kind === 'VERIFY' && item.state === 'FAILED')
+    const failed = snapshot.workItem_submission.some((item) => item.state === 'FAILED' &&
+      (item.kind === 'VERIFY' || item.kind === 'EXTRACT' && snapshot.document_submission.some((document) =>
+        item.dedupeKey === DocumentProcessor.extractionKey(document.id)) || item.kind === 'SCAN' &&
+        snapshot.document_submission.some((document) => document.status !== 'CLEAN' && item.dedupeKey === document.id)))
+    const extracting = snapshot.workItem_submission.some((item) => item.kind === 'EXTRACT' && ['READY', 'RUNNING'].includes(item.state))
     const followUp = snapshot.workItem_submission.filter((item) => item.kind === 'NOTIFY').at(-1)
     return { stages: [
       { name: 'Intake', state: row.status === 'INVITED' ? 'Waiting' : 'Started' },
       { name: 'Documents', state: snapshot.document_submission.some((doc) => doc.status === 'REJECTED') ? 'Action required' :
         policy.documents.every((kind) => snapshot.document_submission.some((doc) => doc.kind === kind && doc.status === 'CLEAN')) ? 'Clean' : 'Waiting' },
+      { name: 'Extraction', state: failed ? 'Action required' : extracting ? 'Running' : snapshot.workItem_submission.some((item) => item.kind === 'EXTRACT' && item.state === 'SUCCEEDED') ? 'Recorded' : 'Waiting' },
       { name: 'Checks', state: failed ? 'Provider unavailable' : row.status === 'SUBMITTED' ? 'Running' : snapshot.checkRun_submission.length ? 'Recorded' : 'Waiting' },
       { name: 'Decision', state: row.status },
       { name: 'Follow-up', state: followUp?.state ?? 'Waiting' },
@@ -91,18 +100,29 @@ export class Queries {
     const { row, snapshot } = current
     const buyer = Security.isBuyer(actor)
     const membership = buyer ? await Security.buyer(scoped, Queries.READERS) : undefined
-    const privileged = membership?.role === 'REVIEWER' || membership?.role === 'COMPLIANCE'
+    const privileged = membership?.role === 'ADMIN' || membership?.role === 'REVIEWER' || membership?.role === 'COMPLIANCE'
     const { bankProfile, companyProfile, taxProfile } = snapshot
     const invite = buyer ? await InvitationRepository.findFirst({
       orderBy: { createdAt: 'desc' }, where: { caseId, tenantId: scoped.tenantId },
     }) : undefined
+    const delivery = invite ? await NotificationRepository.findFirst({
+      where: { tenantId: scoped.tenantId, workItem: { dedupeKey: invite.id } },
+    }) : undefined
     const accesses = buyer ? await CaseAccessRepository.findMany({
+      include: { user: { select: { name: true, email: true } } },
       where: { caseId, revokedAt: null, tenantId: scoped.tenantId },
     }) : []
-    const scopeReview = privileged ? ReviewEvidence.scopeSuggestion(snapshot) : undefined
+    const scopeReview = privileged ? await ReviewEvidence.scopeSuggestion(current) : undefined
+    const agentReport = privileged && row.status !== 'SUBMITTED' ? await Queries.agentReport(current) : undefined
     return {
-      case: Queries.summary(row, companyProfile?.legalName),
       ...(scopeReview ? { certificateScopeReview: scopeReview } : {}),
+      ...(agentReport ? { verificationReport: agentReport } : {}),
+      case: { ...Queries.summary(row, companyProfile?.legalName),
+        supplierEmail: companyProfile?.contactEmail || (invite ? Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) : row.createdBy.email),
+        requesterName: row.createdBy?.name, requesterEmail: row.createdBy?.email,
+        issueCount: snapshot.issue_submission.filter((issue) => !issue.resolvedAt).length,
+        ...(snapshot.submittedAt ? { submittedAt: snapshot.submittedAt.toISOString() } : {}),
+        ...(delivery ? { invitationDelivery: delivery.deliveryState } : {}) },
       checks: buyer ? snapshot.checkRun_submission.map((check) => ({
         code: privileged || check.ruleKey !== 'OWNERSHIP_SCREENING' ? check.reasonCode : 'COMPLIANCE_REVIEW',
         evidence: privileged ? check.checkEvidence_checkRun.flatMap((item) => item.documentId && item.page
@@ -110,7 +130,8 @@ export class Queries {
         result: check.result, rule: check.ruleKey, source: check.sourceMode,
       })) : [],
       decisions: snapshot.decision_submission.filter((item) => buyer || ['APPROVE', 'REJECT'].includes(item.outcome))
-        .map((item) => ({ at: item.createdAt.toISOString(), outcome: item.outcome })),
+        .map((item) => ({ at: item.createdAt.toISOString(), outcome: item.outcome,
+          ...(buyer ? { rationale: item.rationale, reviewerName: item.reviewer?.name } : {}) })),
       documents: snapshot.document_submission.map((doc) => ({ id: doc.id, kind: doc.kind, status: doc.status })),
       draftRevision: snapshot.draftRevision,
       issues: snapshot.issue_submission.filter((issue) => !issue.resolvedAt && (buyer || issue.supplierMessage))
@@ -122,15 +143,22 @@ export class Queries {
       run: Queries.stages(current),
       submissionId: snapshot.id,
       values: {
-        ...(bankProfile ? { bank: { accountLast4: bankProfile.accountLast4, beneficiary: bankProfile.beneficiary, country: bankProfile.country, currency: bankProfile.currency } } : {}),
+        request: { serviceSite: row.requestedSite, activity: row.category, country: row.country,
+          requesterName: row.createdBy?.name ?? '', requesterEmail: row.createdBy?.email ?? '',
+          createdAt: row.createdAt.toISOString(), submittedAt: snapshot.submittedAt?.toISOString() ?? '',
+          attestedAt: snapshot.attestedAt?.toISOString() ?? '', status: row.status },
+        ...(bankProfile ? { bank: { accountLast4: bankProfile.accountLast4, beneficiary: bankProfile.beneficiary, country: bankProfile.country, currency: bankProfile.currency,
+          ...(privileged ? { account: Secrets.decrypt(bankProfile.accountCiphertext, scoped.tenantId), routing: bankProfile.routingCiphertext ? Secrets.decrypt(bankProfile.routingCiphertext, scoped.tenantId) : '' } : {}) } } : {}),
         ...(companyProfile ? { company: {
           addressLine1: companyProfile.addressLine1, city: companyProfile.city, contactEmail: companyProfile.contactEmail,
           contactName: companyProfile.contactName, country: companyProfile.country, jurisdiction: companyProfile.jurisdiction,
           legalName: companyProfile.legalName, registryId: companyProfile.registryId,
+          addressLine2: companyProfile.addressLine2 ?? '', postalCode: companyProfile.postalCode ?? '',
         } } : {}),
-        ...(taxProfile ? { tax: { formType: taxProfile.formType, vatRegistered: taxProfile.vatRegistered } } : {}),
-        ...(invite ? { invitation: { id: invite.id } } : {}),
-        ...(buyer ? { access: accesses.map((item) => ({ userId: item.userId })),
+        ...(taxProfile ? { tax: { formType: taxProfile.formType, vatRegistered: taxProfile.vatRegistered,
+          ...(privileged ? { taxId: taxProfile.taxIdCiphertext ? Secrets.decrypt(taxProfile.taxIdCiphertext, scoped.tenantId) : '', vatTrn: taxProfile.vatTrnCiphertext ? Secrets.decrypt(taxProfile.vatTrnCiphertext, scoped.tenantId) : '' } : {}) } } : {}),
+        ...(invite ? { invitation: { id: invite.id, email: Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) } } : {}),
+        ...(buyer ? { access: accesses.map((item) => ({ userId: item.userId, name: item.user.name, email: item.user.email })),
           work: snapshot.workItem_submission.filter((item) => item.state === 'FAILED').map((item) => ({ id: item.id, kind: item.kind })) } : {}),
         ...(!buyer || privileged ? { ownership: {
           edges: snapshot.ownershipEdge_submission.map((item) => ({
@@ -147,6 +175,21 @@ export class Queries {
     }
   }
 
+  private static async agentReport(current: Current) {
+    const trace = current.snapshot.checkRun_submission.find((check) => {
+      const value = check.evidenceJson
+      return value && typeof value === 'object' && !Array.isArray(value) && typeof value.reportRef === 'string'
+    })?.evidenceJson
+    if (!trace || typeof trace !== 'object' || Array.isArray(trace) || typeof trace.reportRef !== 'string') return undefined
+    try {
+      const [bytes] = await ObjectStore.STORAGE.bucket(env.GCS_CLEAN_BUCKET).file(trace.reportRef).download()
+      return DocumentVerification.REPORT.parse(JSON.parse(Secrets.decrypt(bytes, current.row.tenantId)))
+    } catch {
+      // An unavailable report must not prevent reviewers from seeing processing errors.
+      return undefined
+    }
+  }
+
   static async download(actor: Actor, input: Input<'download'>) {
     const scoped = await Queries.scope(actor, input.caseId)
     const document = await DocumentRepository.findFirst({
@@ -154,10 +197,12 @@ export class Queries {
     })
     Commands.require(document?.cleanKey && document.cleanGeneration, 'clean document is unavailable')
     if (Security.isBuyer(actor)) {
-      await Security.buyer(actor, document.kind === 'OWNERSHIP' ? ['COMPLIANCE', 'REVIEWER'] : ['REVIEWER'])
+      await Security.buyer(actor, document.kind === 'OWNERSHIP' ? ['ADMIN', 'COMPLIANCE', 'REVIEWER'] : ['ADMIN', 'REVIEWER'])
     }
     await BaseRepository.runInTransaction(async (tx) => Commands.audit(scoped, 'DOWNLOAD_URL_ISSUED', input.caseId, tx, { documentId: document.id }))
-    return { url: await ObjectStore.download(document.cleanKey, document.cleanGeneration) }
+    return { url: localGoogleStorageEnabled()
+      ? new URL(`/api/documents/download?documentId=${encodeURIComponent(document.id)}`, env.APP_URL).toString()
+      : await ObjectStore.download(document.cleanKey, document.cleanGeneration) }
   }
 
   static async identity(actor: Actor): Promise<Output<'identity'>> {
@@ -165,20 +210,31 @@ export class Queries {
       select: { id: true, role: true, tenantId: true },
       where: { active: true, userId: actor.id, ...(actor.channel === Security.DEMO ? { tenantId: demoIdentity.tenantId } : {}) },
     }) : []
-    return { email: actor.email, memberships, tenantId: actor.tenantId }
+    return { channel: actor.channel, email: actor.email, memberships, tenantId: actor.tenantId }
   }
 
   static async list(actor: Actor, input: Input<'list'>): Promise<Output<'list'>> {
     const rows = await OnboardingCaseRepository.findMany({
       cursor: input.cursor ? { id: input.cursor } : undefined,
-      include: { submission_case: { include: { companyProfile: true }, orderBy: { number: 'desc' }, take: 1 } },
+      include: { createdBy: { select: { name: true, email: true } },
+        invitation_case: { orderBy: { createdAt: 'desc' }, take: 1 },
+        submission_case: { include: { companyProfile: true, issue_submission: { where: { resolvedAt: null } },
+          workItem_submission: { where: { notification_workItem: { some: { template: 'Supplier onboarding invitation' } } }, orderBy: { createdAt: 'desc' }, take: 1, include: { notification_workItem: true } } }, orderBy: { number: 'desc' }, take: 1 } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: input.cursor ? 1 : 0, take: input.limit + 1,
       where: {
         country: input.country, status: input.status, tenantId: actor.tenantId,
         ...(input.search ? { submission_case: { some: { companyProfile: { legalName: { contains: input.search, mode: 'insensitive' } } } } } : {}),
       },
     })
-    const items = rows.slice(0, input.limit).map((row) => Queries.summary(row, row.submission_case[0]?.companyProfile?.legalName))
+    const items = rows.slice(0, input.limit).map((row) => ({
+      ...Queries.summary(row, row.submission_case[0]?.companyProfile?.legalName),
+      supplierEmail: row.submission_case[0]?.companyProfile?.contactEmail || (row.invitation_case[0] ? Secrets.decrypt(row.invitation_case[0].recipientCiphertext, actor.tenantId) : row.createdBy.email),
+      requesterName: row.createdBy.name, requesterEmail: row.createdBy.email,
+      issueCount: row.submission_case[0]?.issue_submission.length ?? 0,
+      issueSummary: row.submission_case[0]?.issue_submission.map((issue) => issue.supplierMessage || 'Compliance review required.') ?? [],
+      ...(row.submission_case[0]?.submittedAt ? { submittedAt: row.submission_case[0].submittedAt.toISOString() } : {}),
+      invitationDelivery: row.submission_case[0]?.workItem_submission[0]?.notification_workItem[0]?.deliveryState,
+    }))
     return { items, ...(rows.length > input.limit ? { nextCursor: items.at(-1)?.caseId } : {}) }
   }
 
@@ -186,7 +242,7 @@ export class Queries {
     return Queries.stages(await Commands.current(await Queries.scope(actor, caseId), caseId))
   }
 
-  static summary(row: Omit<Current['row'], 'policy'>, name = '') {
+  static summary(row: Pick<Current['row'], 'id' | 'createdAt' | 'currentNumber' | 'requestedSite' | 'revision' | 'status' | 'updatedAt'>, name = '') {
     return {
       caseId: row.id, createdAt: row.createdAt.toISOString(), name, number: row.currentNumber ?? 1,
       requestedSite: row.requestedSite, revision: row.revision, status: row.status, updatedAt: row.updatedAt.toISOString(),

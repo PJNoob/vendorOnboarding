@@ -1,0 +1,66 @@
+timeout: 3600s
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - PROJECT_ID=$PROJECT_ID
+    - BUILD_ID=$BUILD_ID
+    - COMMIT_SHA=$COMMIT_SHA
+    - BRANCH_NAME=$BRANCH_NAME
+    - _DEPLOY=${_DEPLOY}
+    - _REGION=${_REGION}
+    - _CLUSTER_PROJECT=${_CLUSTER_PROJECT}
+    - _CLUSTER=${_CLUSTER}
+    - _ZONE=${_ZONE}
+substitutions:
+  _DEPLOY: 'false'
+  _REGION: asia-south1
+  _CLUSTER_PROJECT: voice-agent-yojnapath
+  _CLUSTER: yojnapath-dev-gke
+  _ZONE: asia-south1-a
+steps:
+  - id: database
+    name: gcr.io/cloud-builders/docker
+    args: [run, -d, --network=cloudbuild, --name=ci-postgres, -e, POSTGRES_USER=test, -e, POSTGRES_PASSWORD=test, -e, POSTGRES_DB=test, postgres:16-bookworm]
+  - id: application-checks
+    name: node:22-bookworm
+    waitFor: [database]
+    entrypoint: bash
+    args: [scripts/ci/check-app.sh]
+  - id: document-checks
+    name: python:3.13-slim
+    waitFor: ['-']
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        pip install './services/document-verification[test]'
+        cd services/document-verification
+        python -m pytest -q
+  - id: pipeline-checks
+    name: python:3.13-slim
+    waitFor: ['-']
+    entrypoint: python
+    args: [-m, unittest, discover, -s, scripts/ci, -p, 'test_*.py', -v]
+  - id: helm-checks
+    name: alpine/helm:3.17.3
+    waitFor: ['-']
+    entrypoint: sh
+    args:
+      - -ec
+      - |
+        helm lint infra/helm/builder -f infra/helm/builder/values.production.yaml
+        helm template vendor-onboarding infra/helm/builder -f infra/helm/builder/values.production.yaml > /workspace/rendered-chart.yaml
+  - id: images
+    name: gcr.io/cloud-builders/docker
+    waitFor: [application-checks, document-checks, pipeline-checks, helm-checks]
+    entrypoint: bash
+    args: [scripts/ci/build-images.sh]
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    waitFor: [images]
+    entrypoint: /usr/local/bin/entrypoint.sh
+    env:
+      - COMPONENTS=kubectl google-cloud-cli-gke-gcloud-auth-plugin
+      - APT_PACKAGES=curl python3
+    args: [bash, scripts/ci/deploy.sh]

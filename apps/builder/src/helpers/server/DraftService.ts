@@ -7,6 +7,7 @@ import {
 import type { Input } from '@neo/schemas'
 
 import { Commands } from './Commands'
+import { DocumentProcessor } from './DocumentProcessor'
 import { ObjectStore } from './Providers'
 import { type Actor, Secrets, Security } from './Security'
 
@@ -84,7 +85,7 @@ export class DraftService {
       const { id, ...fields } = document
       const copied = await DocumentRepository.create({ data: { ...fields, ...key } }, tx)
       documentMap.set(id, copied.id)
-      await Commands.enqueue(key.tenantId, 'EXTRACT', copied.id, { documentId: copied.id }, tx, target)
+      await Commands.enqueue(key.tenantId, 'EXTRACT', DocumentProcessor.extractionKey(copied.id), { documentId: copied.id }, tx, target)
     }
     await QualificationRepository.createMany({ data: snapshot.qualification_submission.map(({ id: _id, ...fields }) => ({ ...fields, ...key })) }, tx)
     await OwnershipEntityRepository.createMany({ data: snapshot.ownershipEntity_submission.map(({ id: _id, ...fields }) => ({ ...fields, ...key })) }, tx)
@@ -219,6 +220,12 @@ export class DraftService {
       await OnboardingCaseRepository.updateMany({
         data: { revision: { increment: 1 }, status: 'SUBMITTED' }, where: { id: row.id, tenantId: scoped.tenantId },
       }, tx)
+      for (const document of snapshot.document_submission.filter((item) => item.status === 'CLEAN')) {
+        const key = DocumentProcessor.extractionKey(document.id)
+        if (!snapshot.workItem_submission.some((item) => item.kind === 'EXTRACT' && item.dedupeKey === key)) {
+          await Commands.enqueue(scoped.tenantId, 'EXTRACT', key, { documentId: document.id }, tx, snapshot.id)
+        }
+      }
       await Commands.enqueue(scoped.tenantId, 'VERIFY', snapshot.id, {}, tx, snapshot.id)
       await Commands.audit(scoped, 'SUBMITTED', row.id, tx)
       return { id: snapshot.id, revision: row.revision + 1 }
