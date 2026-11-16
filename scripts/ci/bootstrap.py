@@ -63,6 +63,7 @@ def identities():
     role = {'apiVersion': 'rbac.authorization.k8s.io/v1', 'kind': 'Role',
             'metadata': {'name': 'vendor-deployer', 'namespace': NAMESPACE}, 'rules': [
                 {'apiGroups': ['apps'], 'resources': ['deployments'], 'verbs': ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']},
+                {'apiGroups': ['apps'], 'resources': ['replicasets'], 'verbs': ['get', 'list', 'watch']},
                 {'apiGroups': [''], 'resources': ['secrets', 'configmaps', 'services', 'serviceaccounts'], 'verbs': ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']},
                 {'apiGroups': [''], 'resources': ['pods', 'events'], 'verbs': ['get', 'list', 'watch']},
                 {'apiGroups': [''], 'resources': ['pods/exec'], 'verbs': ['get', 'create']},
