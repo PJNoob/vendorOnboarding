@@ -69,7 +69,12 @@ export class Authentication {
 
   static create(allowDemo: boolean) {
     return betterAuth({
-      account: { accountLinking: { enabled: false }, encryptOAuthTokens: true },
+      // OTP and Google authenticate the same verified email into one user record.
+      // Keep both email verification checks; trusting a provider by name bypasses one.
+      account: {
+        accountLinking: { enabled: true, allowDifferentEmails: false, requireLocalEmailVerified: true },
+        encryptOAuthTokens: true,
+      },
       baseURL: env.APP_URL,
       database: prismaAdapter(prisma, { provider: 'postgresql' }),
       databaseHooks: {
