@@ -10,4 +10,8 @@ workloadIdentity:
   webServiceAccount: vendor-onboarding-web@vendor-onboarding-514819.iam.gserviceaccount.com
   workerServiceAccount: vendor-onboarding-worker@vendor-onboarding-514819.iam.gserviceaccount.com
 ingress:
-  enabled: false
+  enabled: true
+  redirectToHttps: false
+  certificateName: vendor-onboarding-certificate-v2
+  hostname: vendor-onboarding.demo.asymptotiq.com
+  staticIpName: yojnapath-dev-vendor-https

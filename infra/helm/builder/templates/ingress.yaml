@@ -1,9 +1,31 @@
 {{- if .Values.ingress.enabled }}
 {{- $hostname := required "ingress.hostname is required" .Values.ingress.hostname }}
+{{- $certificate := default (printf "%s-certificate" .Release.Name) .Values.ingress.certificateName }}
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ .Release.Name }}-web
+spec:
+  healthCheck:
+    type: HTTP
+    port: 3000
+    requestPath: /api/health/ready
+    checkIntervalSec: 15
+    timeoutSec: 5
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: {{ .Release.Name }}-https-redirect
+spec:
+  redirectToHttps:
+    enabled: {{ .Values.ingress.redirectToHttps }}
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT
+---
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
-  name: {{ .Release.Name }}-certificate
+  name: {{ $certificate }}
 spec:
   domains:
     - {{ $hostname | quote }}
@@ -15,7 +37,8 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: gce
     kubernetes.io/ingress.global-static-ip-name: {{ .Values.ingress.staticIpName | quote }}
-    networking.gke.io/managed-certificates: {{ .Release.Name }}-certificate
+    networking.gke.io/managed-certificates: {{ $certificate }}
+    networking.gke.io/v1beta1.FrontendConfig: {{ .Release.Name }}-https-redirect
 spec:
   rules:
     - host: {{ $hostname | quote }}
