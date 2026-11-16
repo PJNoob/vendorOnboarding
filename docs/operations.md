@@ -36,6 +36,8 @@ Google sign-in uses Better Auth and requires a real OAuth client. Values such as
 4. Set `BOOTSTRAP_ADMIN_EMAIL` to your first administrator's Google email and run `make seed` with the same environment. Existing administrators enroll additional team members from **Team & access**. Google authentication verifies identity; workspace access still requires enrollment. Supplier email OTP access remains available separately.
 5. Select **Continue with Google**, complete consent, and confirm you return to the workspace. Cancelled or failed callbacks return to the sign-in page with a readable error. If Google reports `invalid_client`, verify the client still exists and that both credentials belong to it. For `redirect_uri_mismatch`, compare the full registered callback URL. For `access_denied` in Testing, check the test-user list.
 
+If server logs report `account_not_linked`, the email already has a user record (for example, from supplier OTP sign-in) without a Google account binding. Account linking must be enabled for this flow. The app requires both the existing user and Google's email to be verified, matches the same email, and retains the existing user ID and workspace memberships. Enrollment and buyer session checks still control procurement access. Do not delete the user or their memberships to work around this error.
+
 Reference: [Better Auth Google configuration](https://better-auth.com/docs/authentication/google), [Google OAuth error handling](https://developers.google.com/identity/oauth2/web/guides/error).
 
 ## Country directory
