@@ -4,6 +4,7 @@ import { env } from '@neo/env'
 import { Prisma, type CheckResult, type DocumentKind, type SourceMode } from '@neo/prisma'
 
 import { Commands } from './Commands'
+import { screenOfac } from './OfacScreening'
 import { Secrets } from './Security'
 
 export interface Evidence {
@@ -46,10 +47,14 @@ export class Verification {
           .map((item) => ({ key: item.entityKey, match: 'BLOCKED' as const })),
       }
     }
-    const response = await fetch(env.SCREENING_URL, {
-      body: JSON.stringify({ entities: entities.map(({ country, entityKey, legalName, registryId }) => ({
-        country, key: entityKey, name: legalName, ...(registryId ? { registryId } : {}),
-      })) }),
+    const subjects = entities.map(({ country, entityKey, legalName, registryId }) => ({
+      country, key: entityKey, name: legalName, ...(registryId ? { registryId } : {}),
+    }))
+    if (env.SCREENING_PROVIDER === 'ofac') return screenOfac(subjects)
+    const url = env.SCREENING_URL
+    Commands.require(url && env.SCREENING_TOKEN, 'HTTP screening provider is not configured')
+    const response = await fetch(url, {
+      body: JSON.stringify({ entities: subjects }),
       headers: { Authorization: `Bearer ${env.SCREENING_TOKEN}`, 'Content-Type': 'application/json' },
       method: 'POST',
       signal: AbortSignal.timeout(Verification.TIMEOUT_MS),
@@ -94,7 +99,7 @@ export class Verification {
         }
       }
     }
-    const trace = { blocked: [...blocked], dataset: screening.dataset }
+    const trace = { ...screening, blocked: [...blocked] }
     if (blocked.has(vendor.entityKey)) {
       return { ...base, code: 'OWNERSHIP_BLOCKED_CHAIN', message: '', result: 'REVIEW', trace }
     }

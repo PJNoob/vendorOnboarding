@@ -32,8 +32,14 @@ export const env = createEnv({
     PII_KEY: z.string().regex(RuntimeValues.HEX_KEY),
     REDIS_URL: z.url(),
     RESEND_API_KEY: z.string().min(1),
-    SCREENING_TOKEN: z.string().min(1),
-    SCREENING_URL: z.url(),
+    SCREENING_PROVIDER: z.enum(['http', 'ofac']).default('http'),
+    SCREENING_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    SCREENING_URL: z.preprocess((value) => value === '' ? undefined : value, z.url().optional()),
   },
   skipValidation: process.env.NEXT_PHASE === 'phase-production-build',
 })
+
+if (process.env.NEXT_PHASE !== 'phase-production-build' && env.DEMO_SCREENING === 'false' &&
+  env.SCREENING_PROVIDER === 'http' && (!env.SCREENING_TOKEN || !env.SCREENING_URL)) {
+  throw new Error('SCREENING_TOKEN and SCREENING_URL are required for the HTTP screening provider')
+}
