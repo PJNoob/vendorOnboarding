@@ -33,7 +33,7 @@ export class TeamService {
   }
 
   static async accept(actor: Actor) {
-    if (actor.channel !== Security.BUYER || !actor.verified) return
+    if (!actor.verified || (actor.channel !== Security.BUYER && actor.channel !== Security.SUPPLIER)) return
     const emailKey = Secrets.mac(Secrets.email(actor.email), 'email')
     const pending = await BuyerEnrollmentRepository.findMany({
       where: { acceptedAt: null, emailKey, expiresAt: { gt: new Date() }, revokedAt: null },
