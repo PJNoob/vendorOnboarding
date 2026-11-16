@@ -3,3 +3,17 @@
 **/.next
 **/node_modules
 .git
+**/.env.*
+!**/.env.schema
+**/.terraform
+**/*.tfstate*
+**/*.tfplan
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/*.egg-info
+**/*.log
+**/*.tsbuildinfo
+tmp
+output
+rendered-chart.yaml
