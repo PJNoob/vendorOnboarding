@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 class RuntimeValues {
   static readonly BOOLEAN = ['false', 'true'] as const
+  static readonly MAIL_PROVIDERS = ['gmail', 'resend'] as const
   static readonly HEX_KEY = /^[a-fA-F0-9]{64}$/
 }
 
@@ -37,13 +38,20 @@ export const env = createEnv({
     DEMO_LOGIN_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(16).max(256).optional()),
     DEMO_SCREENING: z.enum(RuntimeValues.BOOLEAN),
     EMAIL_FROM: z.email(),
+    DOCUMENT_SERVICE_URL: z.url().default('http://127.0.0.1:8080'),
+    DOCUMENT_SERVICE_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(32).optional()),
     GCS_CLEAN_BUCKET: z.string().min(1),
     GCS_QUARANTINE_BUCKET: z.string().min(1),
+    // Gmail credentials are unused when Resend is selected.
+    GMAIL_APP_PASSWORD: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
     GOOGLE_CLIENT_ID: demoAuthEnabled() ? z.string().optional() : googleClientId,
     GOOGLE_CLIENT_SECRET: demoAuthEnabled() ? z.string().optional() : googleClientSecret,
+    // Preserve the existing Resend configuration for local environments.
+    MAIL_PROVIDER: z.enum(RuntimeValues.MAIL_PROVIDERS).default('resend'),
     PII_KEY: z.string().regex(RuntimeValues.HEX_KEY),
     REDIS_URL: z.url(),
     RESEND_API_KEY: z.string().min(1),
+    MAILTESTER_NINJA_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     REST_COUNTRIES_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     SCREENING_TOKEN: z.string().min(1),
     SCREENING_URL: z.url(),

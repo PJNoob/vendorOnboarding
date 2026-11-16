@@ -36,7 +36,7 @@ export const profiles = {
     routing: text.optional(),
   }),
   company: z.strictObject({
-    addressLine1: text, city: text, contactEmail: z.email(), contactName: text,
+    addressLine1: text, city: text, contactEmail: z.email({ error: 'Enter a valid mail' }), contactName: text,
     country: countryCode, jurisdiction: text, legalName: text, registryId: text,
   }),
   ownership: z.strictObject({
@@ -67,17 +67,18 @@ const section = z.discriminatedUnion('section', [
 ])
 const pagination = { cursor: id.optional(), limit: z.int().min(1).max(Values.MAX_PAGE) }
 export const inputs = {
+  acceptInvitation: command.extend({ invitationId: id }),
   analytics: z.strictObject({ from: date, to: date }),
   audit: caseRef.extend(pagination),
   case: caseRef,
   create: command.extend({
     category: z.enum(Values.ACTIVITIES), country: countryCode,
-    requestedSite: text, supplierEmail: z.email(),
+    requestedSite: text, supplierEmail: z.email({ error: 'Enter a valid mail' }),
   }),
   decide: change.extend({ outcome: z.enum(Values.DECISIONS), rationale: message, submissionId: id }),
   document: draft.extend({ documentId: id }),
   download: caseRef.extend({ documentId: id }),
-  enroll: command.extend({ email: z.email(), role: z.enum(Values.BUYER_ROLES) }),
+  enroll: command.extend({ email: z.email({ error: 'Enter a valid mail' }), role: z.enum(Values.BUYER_ROLES) }),
   invite: change.extend({ invitationId: id }),
   list: z.strictObject({
     country: countryCode.optional(), // Omitted filters include every matching case.
@@ -89,6 +90,7 @@ export const inputs = {
   none: z.strictObject({}),
   redeem: command.extend({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }),
   reissue: change,
+  reprocess: change.extend({ submissionId: id }),
   request: change.extend({ message, submissionId: id }),
   reserve: draft.extend({ kind: z.enum(Values.DOCUMENTS), sha256: z.string().regex(/^[a-f0-9]{64}$/), sizeBytes: z.int().min(1).max(Values.MAX_FILE) }),
   resolve: change.extend({ evidenceDocumentIds: z.array(id).min(1).max(20), issueId: id, rationale: message, submissionId: id }),
@@ -102,12 +104,23 @@ export const inputs = {
 }
 
 const summary = z.strictObject({
+  supplierEmail: z.string().optional(), requesterName: z.string().optional(), requesterEmail: z.string().optional(),
+  issueCount: z.int().nonnegative().optional(), issueSummary: z.array(z.string()).optional(), submittedAt: date.optional(),
+  invitationDelivery: z.string().optional(),
   caseId: id, createdAt: date, name: z.string(), number: z.int(), requestedSite: text,
   revision: z.int(), status: z.enum(Values.CASE_STATES), updatedAt: date,
 })
 const issue = z.strictObject({ code: text, id, message: z.string(), owner: text })
 const stage = z.strictObject({ name: text, state: text })
 const run = z.strictObject({ stages: z.array(stage) })
+export const verificationReport = z.strictObject({
+  submissionId: id, version: text, recommendation: z.enum(['CONSISTENT', 'NEEDS_REVIEW']),
+  findings: z.array(z.strictObject({
+    rule: z.enum(['BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'ENTITY_CONSISTENCY', 'TAX_PROFILE']),
+    result: z.enum(['PASS', 'REVIEW']), code: text, message: z.string(),
+    evidence: z.array(z.strictObject({ documentId: id, page: z.int().positive(), field: text, value: z.string(), quote: z.string() })),
+  })),
+})
 export const outputs = {
   ack: z.strictObject({ id, revision: z.int() }),
   analytics: z.strictObject({
@@ -119,21 +132,30 @@ export const outputs = {
     nextCursor: id.optional(), // Omitted on the last page.
   }),
   detail: z.strictObject({
+    verificationReport: verificationReport.optional(),
     case: summary, checks: z.array(z.strictObject({
       code: text, evidence: z.array(z.strictObject({ documentId: id, field: text, page: z.int() })),
       result: text, rule: text, source: text,
     })),
-    decisions: z.array(z.strictObject({ at: date, outcome: text })),
+    decisions: z.array(z.strictObject({ at: date, outcome: text, rationale: z.string().optional(), reviewerName: z.string().optional() })),
     documents: z.array(z.strictObject({ id, kind: z.enum(Values.DOCUMENTS), status: text })),
     draftRevision: z.int(), issues: z.array(issue), required: z.array(z.enum(Values.DOCUMENTS)),
     run, submissionId: id, values: z.record(z.string(), z.json()),
   }),
   download: z.strictObject({ url: z.url() }),
+  pendingInvitations: z.strictObject({ items: z.array(z.strictObject({
+    id, caseId: id, requestedSite: text, country: countryCode, expiresAt: date,
+  })) }),
   identity: z.strictObject({
-    email: z.email(), memberships: z.array(z.strictObject({ id, role: z.enum(Values.BUYER_ROLES), tenantId: id })),
+    channel: z.string(),
+    email: z.email({ error: 'Enter a valid mail' }), memberships: z.array(z.strictObject({ id, role: z.enum(Values.BUYER_ROLES), tenantId: id })),
     tenantId: z.string(),
   }),
   list: z.strictObject({ items: z.array(summary), nextCursor: id.optional() }), // Omitted on the last page.
+  teamDirectory: z.strictObject({
+    members: z.array(z.strictObject({ id, name: z.string(), email: z.email(), role: z.enum(Values.BUYER_ROLES) })),
+    suppliers: z.array(z.strictObject({ id, name: z.string(), email: z.email(), caseId: id, requestedSite: text })),
+  }),
   run,
   upload: z.strictObject({ id, headers: z.record(z.string(), z.string()), revision: z.int(), url: z.url() }),
 }

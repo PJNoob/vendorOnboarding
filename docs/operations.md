@@ -24,7 +24,7 @@ make seed
 pnpm dev
 ```
 
-Run `pnpm worker` in a second terminal with the same exported environment. The worker needs Poppler, English Tesseract, ClamAV and current ClamAV signatures in `/tmp/clamav`. Install them locally or use the supplied container. It sends messages only when the application invokes an OTP or a queued notification.
+Run `pnpm worker` in a second terminal with the same exported environment. The worker needs ClamAV and current signatures in `/tmp/clamav`, plus the Python document service described below. Install them locally or use the supplied container. It sends messages only when the application invokes an OTP or a queued notification.
 
 ## Google sign-in setup and troubleshooting
 
@@ -68,8 +68,65 @@ Build the image through `make build-builder` and push it to Artifact Registry wi
 
 ## Implementation boundaries
 
-The included checks compare evidence against the supplier declaration and requested scope. External authority checks require configured providers. The sample policy uses a shared baseline evidence list for the two country profiles. PII encryption uses AES-GCM with a secret provided to the process. KMS envelope encryption, secret rotation, storage retention and database privilege provisioning remain infrastructure work. The generated Prisma migration covers the schema. Deferred and immutability triggers from the design are enforced by the application write paths in this implementation. Web and worker share the image. Each worker runs a database reconciliation loop. Native Poppler and Tesseract provide extraction, so the optional Python service is unnecessary for this build.
+The included checks compare evidence against the supplier declaration and requested scope. External authority checks require configured providers. The sample policy uses a shared baseline evidence list for the two country profiles. PII encryption uses AES-GCM with a secret provided to the process. KMS envelope encryption, secret rotation, storage retention and database privilege provisioning remain infrastructure work. The generated Prisma migration covers the schema. Deferred and immutability triggers from the design are enforced by the application write paths in this implementation. Web and worker share the image. Each worker runs a database reconciliation loop. Google Document AI now provides OCR through the Python service. LangGraph orchestrates Gemini field extraction, source validation, cross-document comparisons, and the reviewer report.
 
 The code-quality references describe an existing Neo installation with NextAuth and credential JWTs. This standalone project adapts its repository, procedure, env and folder conventions to the Better Auth sessions specified by the design. Browser workspace selection is sent as a membership-checked header. Framework route entry points use the default exports Next.js requires.
 
 References: [Better Auth](https://better-auth.com/docs/integrations/next), [tRPC](https://trpc.io/docs/server/procedures), [Cloud Storage signed URLs](https://docs.cloud.google.com/storage/docs/access-control/signing-urls-with-helpers), [OFAC ownership guidance](https://ofac.treasury.gov/faqs/401).
+
+## Application logs
+
+`pnpm dev` and `pnpm --filter @neo/builder start` append server output and errors to `logs/application.log` at the repository root, while keeping terminal output visible. `pnpm worker` writes to `logs/worker.log`. Entries include UTC timestamps and the output stream. Restarts append to the existing files. These files are ignored by Git. Set `APPLICATION_LOG_DIR` to use a different directory. API errors include their procedure and error code; request bodies, email addresses, and credentials are not added to these error records.
+
+## Supplier mailbox verification
+
+New supplier requests are saved atomically as a case, invitation, and durable queued notification. Mailbox verification happens asynchronously before any invitation email is sent. The adapter uses the [MailTester Ninja Verifier API](https://mailtester.ninja/api/). Configure `MAILTESTER_NINJA_API_KEY` in the server environment (locally, `apps/builder/.env.local`) and restart the app and worker. Cloud configuration is stored in the existing `vendor-app-config` JSON secret. Updating that secret alone does not deploy code or refresh Kubernetes environments; sync it and deploy/restart the compatible application separately.
+
+Only `code: ok` permits sending an invitation email. Invalid recipients (`ko`) return “Incorrect supplier credentials. Enter the correct supplier email.” Uncertain/no-verdict results (`mb` / `--`), timeouts, provider failures, and missing/expired credentials block invitations with a separate verification error. This check estimates deliverability; final delivery is not guaranteed.
+
+The free token permits 50 checks/day, with one new request every 35 seconds, and expires after seven days. Redis shares a five-minute result cache between web and worker so a newly queued invitation reuses its recipient check. A shared 30-second rate gate prevents concurrent instances from exhausting the free request pace. Cache keys conceal addresses with HMAC; only verdicts are stored. Rate limits produce a retry message rather than reporting incorrect credentials.
+
+The worker checks before sending, including notifications queued before verification was enabled. Confirmed invalid queued recipients are canceled and their invitations revoked; unavailable verification is retried without sending. Existing application rows remain as historical records.
+
+## Supplier invitation queue
+
+Run `pnpm worker` alongside `pnpm dev`. The worker checks the durable supplier invitation queue every 35 seconds and publishes at most one due entry per interval, oldest due first. A shared Redis slot enforces that pace across worker instances; document jobs and other notifications retain their separate two-second dispatch loop. New/reissued invitations do not call the verification API in the HTTP request. Malformed email formats are still rejected immediately.
+
+The UI shows Queued for email check, Checking email, Invalid supplier email, or Invited based on notification delivery, and refreshes pending entries automatically. Invalid recipients are canceled and revoked before sending. Transient verification failures and API rate limits defer the entry for at least 35 seconds without using a mail delivery attempt; expiry/token failures eventually show Invitation failed for manual retry. Logs remain in `logs/worker.log`. Tests mock mail delivery and do not send real emails.
+
+
+## Automatic supplier invitation delivery
+
+`pnpm dev` starts both the web application and the delivery worker. One supplier is picked up every 35 seconds. After the recipient passes MailTester Ninja verification, the worker immediately sends the invitation using `MAIL_PROVIDER` and `EMAIL_FROM`, then records the provider message ID and sets the notification to SENT. There is no human approval step or approval UI for supplier invitations.
+
+Invalid recipients become failed work items and display Failed — invalid supplier credentials. Inconclusive checks display a distinct verification failure. API rate limits remain queued for retry. Provider acceptance is recorded as SENT; it does not guarantee inbox delivery.
+
+Configure Gmail with `MAIL_PROVIDER=gmail`, `EMAIL_FROM`, and `GMAIL_APP_PASSWORD`, or Resend with its verified sender and `RESEND_API_KEY`. Local server configuration lives in the ignored `.env.local` file; cloud configuration lives in Secret Manager. Worker logs are in `logs/worker.log`.
+
+## Supplier invitation entry
+
+The `/invite` route loads the same server-side country data as the main workspace. Invitation fragments remain available through email-code sign-in and refresh, and are cleared after successful acceptance. Supplier invitations use the EMAIL_OTP channel; Google sign-in creates a buyer session. A Google session opening an invitation now shows a clear action to sign out and use supplier sign-in with the invited email.
+
+After verifying the invited address, a link is accepted automatically and the supplier profile opens. The supplier dashboard also lists valid pending invitations by the verified email so they can be accepted without reopening the original message. Draft applications display a Complete your supplier profile prompt. Reopening an accepted, unexpired link opens the existing application for its authorized supplier. Wrong accounts, expired/revoked invitations, and revoked access remain blocked.
+
+## OCR and LangGraph verification
+
+The web app and BullMQ worker retain authentication, immutable submissions, durable jobs, retries, lease fencing, and human decisions. A Python service performs Google Document AI OCR and LangGraph verification. It does not send email, approve vendors, or write directly to the application database. An unfinished graph restarts safely on a worker retry; completed OCR outputs are reused. There is no second checkpoint database.
+
+Use Python 3.11–3.14 and run `make install-document-service` (defaults to `python3.14`; override with `DOCUMENT_PYTHON=python3.13`, for example). Export the settings in `services/document-verification/.env.example`. Generate a random `DOCUMENT_SERVICE_TOKEN` of at least 32 characters; set the same value in the Python environment and `apps/builder/.env.local`. Set the worker's `DOCUMENT_SERVICE_URL=http://127.0.0.1:8080`. Run `make document-service` in a separate terminal, then run the app and worker normally. Missing provider configuration or shared token prevents service startup.
+
+Create an Enterprise Document OCR processor and set `GOOGLE_CLOUD_PROJECT`, `DOCUMENT_AI_LOCATION`, and `DOCUMENT_AI_PROCESSOR_ID`. Set `GOOGLE_CLOUD_LOCATION` for Vertex AI and `GEMINI_MODEL` to an available model supporting structured output. Enable Document AI and Vertex AI APIs and configure Application Default Credentials. Grant the service identity Document AI API User and Vertex AI User permissions on the intended resources. Check model availability, processor access, and enabled APIs in the deployment project before live processing. Never commit credentials.
+
+The worker forwards only scanned, generation-pinned PDF bytes to the authenticated service. Existing upload limits remain 10 MiB and 50 pages. PDFs are split into groups of 15 pages for synchronous OCR. Encrypted and over-limit PDFs return empty evidence and require review; malformed PDFs and provider failures surface as processing failures. Over-limit page text becomes unreadable evidence rather than being silently truncated. OCR and detailed reports are encrypted with existing tenant-scoped encryption before GCS storage.
+
+After extraction completes, LangGraph runs `extract_fields → cross_verify → review_report`. Gemini extracts typed fields and verbatim page quotes. Unsupported, low-confidence, missing, or conflicting values require review. Names, registration identifiers, accounts, tax identifiers, addresses, and certificate scope/expiry are compared where present. Non-ISO expiry dates are conservatively considered ambiguous. No new external registry or authenticity check is introduced; existing ownership screening remains mandatory.
+
+The case displays Extraction and Checks progress. Only Reviewers and Compliance receive detailed compared values and page excerpts. A consistent agent recommendation cannot override a failed existing policy check or ownership hold. Final approval/rejection remains the independent reviewer's action.
+
+For an already-submitted vendor, an Admin opens the case and selects **Reprocess documents**. The `work.reprocess` command validates the current submission and case revision, rejects active jobs, enqueues missing current-version OCR, and resets verification. Existing command idempotency prevents duplicate replay. Completed `document-ai-v1` extraction is reused; `poppler-v1` outputs remain historical. Approved/rejected cases cannot be reprocessed. Existing Admin retry actions remain available for failed jobs; retry verification after resolving extraction failures.
+
+Scan and extraction now have distinct deduplication keys, fixing a database uniqueness collision in their handoff. Verification cannot silently complete with missing extraction. Failed processing remains recoverable instead of being treated as a completed review.
+
+Build and push both the builder image and the image produced by `make build-document-service`. Set `documentService.image` in the Helm override. Each worker pod runs the Python service on localhost:8080 under the worker identity. No public service or ingress is added. Add the shared token and Google processor/model settings to the existing application secret, keeping `DOCUMENT_SERVICE_URL` at localhost. Grant the worker identity provider permissions. No database migration is required.
+
+Internal endpoints: `POST /v1/extract/{documentId}` (PDF), `POST /v1/verify` (submission, required kinds, rules, pages, declared fields), and `GET /health`. Processing requires a bearer token, bounds input, and redacts errors. A request has a 110-second service budget and 120-second worker timeout, below the 180-second lease. Existing attempts/backoff handle failures. Monitor failed SCAN/EXTRACT/VERIFY work, job age, and safe service failure events; never log document bodies or extracted values. Run mocked tests with `make test-document-service`.

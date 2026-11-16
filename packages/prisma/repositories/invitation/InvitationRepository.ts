@@ -7,6 +7,10 @@ export class InvitationRepository extends BaseRepository {
     return InvitationRepository.getClient(tx).invitation.create(args)
   }
 
+  static findMany<T extends Prisma.InvitationFindManyArgs>(args: Prisma.SelectSubset<T, Prisma.InvitationFindManyArgs>, tx?: TransactionClient) {
+    return InvitationRepository.getClient(tx).invitation.findMany(args)
+  }
+
   static findFirst<T extends Prisma.InvitationFindFirstArgs>(args: Prisma.SelectSubset<T, Prisma.InvitationFindFirstArgs>, tx?: TransactionClient) {
     return InvitationRepository.getClient(tx).invitation.findFirst(args)
   }
