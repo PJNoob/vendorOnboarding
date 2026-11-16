@@ -23,6 +23,8 @@ in `asia-south1`, and authorize its Google Cloud Build GitHub App for only this 
 Google requires an interactive OAuth/app installation during this initial connection.
 The Cloud Build service agent temporarily needs Secret Manager Admin while creating
 the connection; `bootstrap.py triggers` removes that project-wide grant afterward.
+Use a time-limited IAM condition titled `vendor-github-bootstrap` if authorization
+must remain pending; the bootstrap cleanup also recognizes that grant.
 
 Using an operator account with the required IAM and namespace RBAC permissions:
 

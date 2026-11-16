@@ -93,7 +93,7 @@ def triggers():
                   'filename': 'cloudbuild.yaml', 'includedFiles': [],
                   'serviceAccount': f'projects/{PROJECT}/serviceAccounts/{identity}@{PROJECT}.iam.gserviceaccount.com',
                   'substitutions': {'_DEPLOY': 'true' if deploy else 'false'},
-                  'repositoryEventConfig': {'repository': resource, 'repositoryType': 'GITHUB',
+                  'repositoryEventConfig': {'repository': resource,
                       ('push' if deploy else 'pullRequest'): ({'branch': '^main$'} if deploy else {
                           'branch': '^main$', 'commentControl': 'COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY'})}}
         previous = next((t for t in existing if t['name'] == name), None)
@@ -105,9 +105,17 @@ def triggers():
             cloud('builds', 'triggers', 'import', f'--region={REGION}', f'--source={filename}')
         print(f'Configured {name}')
     # The connection retains access to its own credential secret after bootstrap.
-    cloud('projects', 'remove-iam-policy-binding', PROJECT,
-          '--member=serviceAccount:service-533980571923@gcp-sa-cloudbuild.iam.gserviceaccount.com',
-          '--role=roles/secretmanager.admin', '--condition=None')
+    agent = 'serviceAccount:service-533980571923@gcp-sa-cloudbuild.iam.gserviceaccount.com'
+    policy = json.loads(cloud('projects', 'get-iam-policy', PROJECT).stdout)
+    for binding in policy.get('bindings', []):
+        if binding['role'] != 'roles/secretmanager.admin' or agent not in binding.get('members', []):
+            continue
+        condition = binding.get('condition')
+        if condition and condition.get('title') != 'vendor-github-bootstrap':
+            continue
+        flag = '--condition=None' if not condition else '--condition=title=' + condition['title'] + ',expression=' + condition['expression']
+        cloud('projects', 'remove-iam-policy-binding', PROJECT,
+              f'--member={agent}', '--role=roles/secretmanager.admin', flag)
 
 
 if __name__ == '__main__':
