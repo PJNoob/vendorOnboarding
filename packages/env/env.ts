@@ -44,6 +44,7 @@ export const env = createEnv({
     PII_KEY: z.string().regex(RuntimeValues.HEX_KEY),
     REDIS_URL: z.url(),
     RESEND_API_KEY: z.string().min(1),
+    REST_COUNTRIES_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     SCREENING_TOKEN: z.string().min(1),
     SCREENING_URL: z.url(),
   },
