@@ -12,7 +12,7 @@ Use Node.js 22, pnpm 10.15.0 and Docker Compose. Start PostgreSQL and Redis with
 - Set `BOOTSTRAP_ADMIN_EMAIL` to the Google account that will enroll as the first admin. Enroll separate Buyer, Reviewer and Compliance accounts from the procurement workspace.
 - Set `GCS_QUARANTINE_BUCKET` and `GCS_CLEAN_BUCKET` to private buckets. Configure Application Default Credentials with signing permission and bucket permissions. Allow the exact application origin to issue signed PUT requests in the quarantine bucket CORS configuration. Include Content-Type, x-goog-if-generation-match and x-goog-content-length-range as appropriate in your client and bucket setup.
 - Configure Resend with an authorized sender and API key. Use inboxes that you control for the demonstration.
-- Set `DEMO_SCREENING=true` to use synthetic screening. The synthetic blocked registry identifier is `FIXTURE-BLOCKED-001`. The worker records source mode FIXTURE. For live operation, set `DEMO_SCREENING=false` and configure a screening adapter that accepts a POST body with an entities array of key, name, country and optional registryId. It must return a dataset version and a matches array of key and match, where match is BLOCKED or POSSIBLE. Set SCREENING_URL and SCREENING_TOKEN for this adapter. Demo mode accepts an unused syntactically valid URL and placeholder token.
+- Set `DEMO_SCREENING=true` to use synthetic screening. The synthetic blocked registry identifier is `FIXTURE-BLOCKED-001`. The worker records source mode FIXTURE. For live operation, set `DEMO_SCREENING=false` and configure a screening adapter that accepts a POST body with an entities array of key, name, country and optional registryId. It must return a dataset version and a matches array of key and match, where match is BLOCKED or POSSIBLE. Set SCREENING_URL and SCREENING_TOKEN for this adapter. See [certificate and sanctions review](#certificate-and-sanctions-review) for the OFAC provider and reviewer MCP setup.
 
 Run the following commands:
 
@@ -39,6 +39,19 @@ The seed command can be rerun. It creates the demo admin, workspace and policies
 Sign in as the bootstrap buyer, enroll a reviewer, then create a supplier invitation. The invited supplier signs in with an email OTP, accepts the invitation, saves the required sections and uploads PDFs. The worker quarantines, scans and extracts text or OCR. Submit only once all required documents show Clean. The buyer case page shows persisted stages and checks. A separate reviewer records the final decision.
 
 To demonstrate the certificate exception, use a certificate whose scope omits the requested site. Upload the correct annex in a new revision and resubmit. For blocked ownership, include a parent owned 60 percent by the synthetic blocked entity and a supplier owned 80 percent by that parent. Include the other owners and make each ownership total 100 percent. The graph check propagates blocked status and opens a compliance hold. Compliance confirmation permits the reviewer to record rejection.
+
+## Certificate and sanctions review
+
+**Certificate suggestions.** Run a private Ollama instance reachable from the worker and pull a local model such as `ollama pull qwen3:8b`. Set `CERTIFICATE_RLM_URL=http://127.0.0.1:11434` when the worker runs on the same host. Use a private service URL when it runs in a container. Set `CERTIFICATE_RLM_MODEL` if you use a different model. The worker passes extracted text from clean certificates and the requested scope to this service. Use an endpoint under your control and a local model for supplier data. Leave the URL blank to disable suggestions.
+
+When the existing certificate scope check fails, the model selects sections and makes up to four recursive evidence calls within a 45-second request budget. Only exact excerpts from those sections are saved with document and page references. The buyer workspace shows them to reviewers and compliance users. Suggestions are advisory and the existing check, issues, and decision workflow continue to apply if the model is unavailable or finds no evidence.
+
+**Sanctions evidence.** Set `DEMO_SCREENING=false` and `SCREENING_PROVIDER=ofac` to use the public OFAC SDN feed. This provider needs no API key. The worker refreshes the feed after an hour and retries the check if it cannot obtain fresh, complete data. It records the publication date, retrieval time, content hash and matched SDN record IDs. Exact normalized primary names and aliases produce possible matches for compliance review. This provider covers the SDN list and performs name matching. Broader screening coverage uses the existing HTTP adapter. Use `SCREENING_PROVIDER=http` with `SCREENING_URL` and `SCREENING_TOKEN` for that adapter, or `DEMO_SCREENING=true` for the synthetic fixture.
+
+**Reviewer MCP.** Configure a trusted MCP client for Streamable HTTP at `<APP_URL>/api/mcp`. Supply a valid Better Auth session cookie via the client's secure header configuration and send `X-Workspace-Id` for the active workspace. The client must support custom headers and stateless POST requests. Use HTTPS outside localhost. Reviewer or compliance membership is checked on each request. The client can list and call these read-only tools with `{ "caseId": "…" }`.
+
+- `get_certificate_scope_evidence` returns advisory citations for the current submission.
+- `get_screening_evidence` returns the current decision-check state and recorded provider evidence, including the underlying provider check if compliance cleared a possible match. Pending, expired, and unavailable results are identified in the response.
 
 ## Deployment
 

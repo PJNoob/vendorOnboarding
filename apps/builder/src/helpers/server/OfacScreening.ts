@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { SaxesParser } from 'saxes'
 
 const SOURCE = 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML'
+const EXPORT_ORIGIN = 'https://wc2h-sls-prod-public-published.s3.us-gov-west-1.amazonaws.com'
 const NAMESPACE = 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML'
 const REFRESH_MS = 60 * 60 * 1000
 const MAX_BYTES = 64 * 1024 * 1024
@@ -98,12 +99,23 @@ export function parseSdn(xml: string) {
 }
 
 async function download() {
-  const response = await fetch(SOURCE, {
-    cache: 'no-store', headers: { 'Cache-Control': 'no-cache' }, redirect: 'error',
-    signal: AbortSignal.timeout(20_000),
-  })
+  const options = {
+    cache: 'no-store', headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(30_000),
+  } as const
+  let response = await fetch(SOURCE, { ...options, redirect: 'manual' })
+  if (response.status === 302) {
+    const location = response.headers.get('location')
+    await response.body?.cancel()
+    const target = location ? new URL(location, SOURCE) : undefined
+    if (!target || target.origin !== EXPORT_ORIGIN || target.username || target.password ||
+      !target.pathname.startsWith('/Published/') || !target.pathname.endsWith('/SDN.XML')) {
+      throw new Error('Unexpected OFAC SDN feed redirect')
+    }
+    response = await fetch(target, { ...options, redirect: 'error' })
+  }
   const age = response.headers.get('age')
-  if (!response.ok || !response.body || (age !== null && Number(age) >= REFRESH_MS / 1000)) {
+  if (!response.ok || !response.body || (age !== null && (!/^\d+$/.test(age) || Number(age) >= REFRESH_MS / 1000))) {
+    await response.body?.cancel()
     throw new Error('OFAC SDN feed is unavailable')
   }
 
@@ -112,6 +124,7 @@ async function download() {
   const decoder = new TextDecoder('utf-8', { fatal: true })
   let bytes = 0
   let xml = ''
+  let fullyRead = false
   try {
     for (;;) {
       const { done, value } = await reader.read()
@@ -122,8 +135,9 @@ async function download() {
       xml += decoder.decode(value, { stream: true })
     }
     xml += decoder.decode()
+    fullyRead = true
   } finally {
-    if (bytes > MAX_BYTES) await reader.cancel()
+    if (!fullyRead) await reader.cancel().catch(() => undefined)
     reader.releaseLock()
   }
 

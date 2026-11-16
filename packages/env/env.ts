@@ -19,6 +19,8 @@ export const env = createEnv({
     APP_URL: z.url(),
     BETTER_AUTH_SECRET: z.string().min(32),
     BOOTSTRAP_ADMIN_EMAIL: z.email(),
+    CERTIFICATE_RLM_MODEL: z.string().trim().min(1).max(128).default('qwen3:8b'),
+    CERTIFICATE_RLM_URL: z.preprocess((value) => value === '' ? undefined : value, z.httpUrl().optional()),
     DATABASE_POOL_SIZE: z.coerce.number().int().positive(),
     DATABASE_URL: z.url(),
     DEMO_AUTH: z.enum(RuntimeValues.BOOLEAN).default('false'),

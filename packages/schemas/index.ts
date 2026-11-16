@@ -106,6 +106,16 @@ const summary = z.strictObject({
 const issue = z.strictObject({ code: text, id, message: z.string(), owner: text })
 const stage = z.strictObject({ name: text, state: text })
 const run = z.strictObject({ stages: z.array(stage) })
+export const certificateScopeSuggestion = z.strictObject({
+  citations: z.array(z.strictObject({
+    documentId: id, field: z.enum(['site', 'activity', 'standard']), page: z.int().positive(),
+    quote: z.string().min(3).max(300),
+  })).max(24),
+  model: z.string().min(1).max(128),
+  status: z.enum(['suggested', 'no_evidence', 'unavailable']),
+})
+export type CertificateScopeSuggestion = z.infer<typeof certificateScopeSuggestion>
+
 export const outputs = {
   ack: z.strictObject({ id, revision: z.int() }),
   analytics: z.strictObject({
@@ -117,7 +127,7 @@ export const outputs = {
     nextCursor: id.optional(), // Omitted on the last page.
   }),
   detail: z.strictObject({
-    case: summary, checks: z.array(z.strictObject({
+    case: summary, certificateScopeReview: certificateScopeSuggestion.optional(), checks: z.array(z.strictObject({
       code: text, evidence: z.array(z.strictObject({ documentId: id, field: text, page: z.int() })),
       result: text, rule: text, source: text,
     })),

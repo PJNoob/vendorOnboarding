@@ -7,6 +7,7 @@ import { type Input, type Output, Values } from '@neo/schemas'
 import { Commands } from './Commands'
 import { demoIdentity } from './DemoIdentity'
 import { ObjectStore } from './Providers'
+import { ReviewEvidence } from './ReviewEvidence'
 import { type Actor, Security } from './Security'
 
 type Current = Awaited<ReturnType<typeof Commands.current>>
@@ -98,8 +99,10 @@ export class Queries {
     const accesses = buyer ? await CaseAccessRepository.findMany({
       where: { caseId, revokedAt: null, tenantId: scoped.tenantId },
     }) : []
+    const scopeReview = privileged ? ReviewEvidence.scopeSuggestion(snapshot) : undefined
     return {
       case: Queries.summary(row, companyProfile?.legalName),
+      ...(scopeReview ? { certificateScopeReview: scopeReview } : {}),
       checks: buyer ? snapshot.checkRun_submission.map((check) => ({
         code: privileged || check.ruleKey !== 'OWNERSHIP_SCREENING' ? check.reasonCode : 'COMPLIANCE_REVIEW',
         evidence: privileged ? check.checkEvidence_checkRun.flatMap((item) => item.documentId && item.page
