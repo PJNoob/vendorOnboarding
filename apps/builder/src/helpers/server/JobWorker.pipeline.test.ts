@@ -6,6 +6,7 @@ import { Commands } from './Commands'
 import { DocumentProcessor } from './DocumentProcessor'
 import { DocumentVerification } from './DocumentVerification'
 import { Worker } from './JobWorker'
+import { ReviewEvidence } from './ReviewEvidence'
 import { ReviewService } from './ReviewService'
 import { Verification } from './Verification'
 
@@ -80,11 +81,16 @@ test('an old submission cannot write verification results', async () => {
 
 for (const [local, agent, expected] of [['PASS', 'REVIEW', 'REVIEW'], ['FAIL', 'PASS', 'FAIL'], ['PASS', 'PASS', 'PASS']] as const) test(`local ${local} and agent ${agent} persist ${expected} for human review`, async () => {
   const worker = instance()
-  setup(snapshot())
+  const current = snapshot()
+  current.policy.rules = ['CERTIFICATE_SCOPE']
+  setup(current)
   worker['evidence'] = async () => new Map()
   worker['commit'] = async (_work, effect) => { await effect?.({} as never) }
   mock.method(Commands, 'caseRow', async () => ({ id: 'case', currentNumber: 1, status: 'SUBMITTED' }) as never)
-  const base = { code: 'TEST', evidence: [], message: 'Review evidence.', rule: 'BANK_BENEFICIARY', source: 'LIVE' as const }
+  const base = { code: 'TEST', evidence: [], message: 'Review evidence.', rule: 'CERTIFICATE_SCOPE', source: 'LIVE' as const }
+  const suggest = mock.method(ReviewEvidence, 'generateScopeSuggestion', async () => ({
+    certificateScopeReviewRef: 'certificate-scope/tenant/submission/fixture', certificateScopeReviewModel: 'configured-gemini-model',
+  }))
   mock.method(Verification, 'evaluate', async () => [{ ...base, result: local }])
   mock.method(DocumentVerification, 'evaluate', async () => [{ ...base, result: agent, trace: { reportRef: 'report' } }])
   mock.method(CheckRunRepository, 'findFirst', async () => null)
@@ -98,5 +104,10 @@ for (const [local, agent, expected] of [['PASS', 'REVIEW', 'REVIEW'], ['FAIL', '
   mock.method(Commands, 'audit', async () => {})
   await worker['verify'](work)
   assert.equal(checks.mock.calls[0].arguments[0]?.data?.result, expected)
+  assert.equal(suggest.mock.callCount(), expected === 'PASS' ? 0 : 1)
+  assert.deepEqual(checks.mock.calls[0].arguments[0]?.data?.evidenceJson, expected === 'PASS' ? { reportRef: 'report' } : {
+    reportRef: 'report', certificateScopeReviewRef: 'certificate-scope/tenant/submission/fixture',
+    certificateScopeReviewModel: 'configured-gemini-model',
+  })
   assert.equal(cases.mock.calls[0].arguments[0]?.data?.status, 'PENDING')
 })

@@ -40,3 +40,48 @@ test('provider failures do not echo supplier details', async () => {
   mock.method(globalThis, 'fetch', async () => new Response('private document text', { status: 503 }))
   await assert.rejects(DocumentVerification.extract('document', Buffer.from('%PDF-')), { message: 'document service unavailable (503)' })
 })
+
+test('cloud certificate review sends bounded calls to the authenticated Gemini sidecar', async () => {
+  const signal = AbortSignal.timeout(45_000)
+  const request = mock.method(globalThis, 'fetch', async () => Response.json({
+    model: 'configured-gemini-model', text: '{"inspect":[1]}',
+  }))
+  const result = await DocumentVerification.generateCertificateEvidence('Select sections', { index: [1] }, signal)
+  const [url, options] = request.mock.calls[0].arguments
+  assert.equal(new URL(String(url)).pathname, '/v1/certificate-scope/generate')
+  assert.equal(options?.signal, signal)
+  assert.match(String((options?.headers as Record<string, string>).Authorization), /^Bearer /)
+  assert.deepEqual(JSON.parse(options?.body as string), { instruction: 'Select sections', data: '{"index":[1]}' })
+  assert.equal(result.model, 'configured-gemini-model')
+})
+
+test('encrypted certificate suggestions can only be read for the current case snapshot', async () => {
+  const { ReviewEvidence } = await import('./ReviewEvidence')
+  const suggestion = {
+    model: 'configured-gemini-model', status: 'suggested',
+    citations: [{ documentId: 'certificate', field: 'site', page: 2, quote: 'North Lab excluded.' }],
+  }
+  const trace = {
+    certificateScopeReviewModel: suggestion.model,
+    certificateScopeReviewRef: 'certificate-scope/tenant/submission/reference',
+  }
+  const currentSnapshot = {
+    row: { tenantId: 'tenant', status: 'PENDING' },
+    snapshot: {
+      id: 'submission',
+      checkRun_submission: [{ ruleKey: 'CERTIFICATE_SCOPE', evidenceJson: trace }],
+      document_submission: [{ id: 'certificate', kind: 'CERTIFICATE', status: 'CLEAN' }],
+    },
+  }
+  const file = mock.fn(() => ({
+    download: async () => [Secrets.encrypt(JSON.stringify(suggestion), 'tenant')],
+  }))
+  mock.method(ObjectStore.STORAGE, 'bucket', () => ({ file }) as never)
+  assert.deepEqual(await ReviewEvidence.scopeSuggestion(currentSnapshot as never), suggestion)
+  currentSnapshot.row.status = 'SUBMITTED'
+  assert.equal(await ReviewEvidence.scopeSuggestion(currentSnapshot as never), undefined)
+  currentSnapshot.row.status = 'PENDING'
+  currentSnapshot.snapshot.id = 'different-submission'
+  assert.equal(await ReviewEvidence.scopeSuggestion(currentSnapshot as never), undefined)
+  assert.equal(file.mock.callCount(), 1)
+})

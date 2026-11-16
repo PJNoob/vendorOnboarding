@@ -108,10 +108,16 @@ spec:
             periodSeconds: 30
             failureThreshold: 3
           {{- end }}
-          {{- if $root.Values.redisCaSecret }}
+          {{- if or (eq $role "worker") $root.Values.redisCaSecret }}
           env:
+            {{- if eq $role "worker" }}
+            - name: CERTIFICATE_RLM_PROVIDER
+              value: {{ $root.Values.documentService.certificateRlmProvider | quote }}
+            {{- end }}
+            {{- if $root.Values.redisCaSecret }}
             - name: NODE_EXTRA_CA_CERTS
               value: /var/run/redis-ca/ca.pem
+            {{- end }}
           {{- end }}
           envFrom:
             - secretRef:

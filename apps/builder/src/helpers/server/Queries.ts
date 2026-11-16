@@ -11,6 +11,7 @@ import { DocumentProcessor } from './DocumentProcessor'
 import { demoIdentity } from './DemoIdentity'
 import { ObjectStore } from './Providers'
 import { localGoogleStorageEnabled } from './LocalGoogleStorage'
+import { ReviewEvidence } from './ReviewEvidence'
 import { type Actor, Secrets, Security } from './Security'
 
 type Current = Awaited<ReturnType<typeof Commands.current>>
@@ -111,8 +112,10 @@ export class Queries {
       include: { user: { select: { name: true, email: true } } },
       where: { caseId, revokedAt: null, tenantId: scoped.tenantId },
     }) : []
+    const scopeReview = privileged ? await ReviewEvidence.scopeSuggestion(current) : undefined
     const agentReport = privileged && row.status !== 'SUBMITTED' ? await Queries.agentReport(current) : undefined
     return {
+      ...(scopeReview ? { certificateScopeReview: scopeReview } : {}),
       ...(agentReport ? { verificationReport: agentReport } : {}),
       case: { ...Queries.summary(row, companyProfile?.legalName),
         supplierEmail: companyProfile?.contactEmail || (invite ? Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) : row.createdBy.email),

@@ -20,6 +20,7 @@ import { supplierEmailVerifier, SupplierEmailVerifier } from './SupplierEmailVer
 import { DocumentProcessor } from './DocumentProcessor'
 import { DocumentVerification } from './DocumentVerification'
 import { MailProvider, ObjectStore } from './Providers'
+import { ReviewEvidence } from './ReviewEvidence'
 import { ReviewService } from './ReviewService'
 import { type Actor, Secrets, Security } from './Security'
 import { type Evidence, Verification } from './Verification'
@@ -32,6 +33,7 @@ export class Worker {
   static readonly BACKOFF = { EXTRACT: 30_000, NOTIFY: 30_000, SCAN: 5_000, VERIFY: 10_000 }
   static readonly ENVELOPE = z.strictObject({ schemaVersion: z.literal(1), workItemId: z.string() })
   static readonly LEASE_MS = 180_000
+  static readonly VERIFICATION_COMMIT_RESERVE_MS = 10_000
   static readonly POLL_MS = 2_000
   static readonly INVITATION_POLL_MS = 35_000
   static readonly INVITATION_TEMPLATE = 'Supplier onboarding invitation'
@@ -265,10 +267,13 @@ export class Worker {
       current.snapshot.document_submission.some((document) => item.dedupeKey === DocumentProcessor.extractionKey(document.id)))
     if (failed) throw new Error('document processing failed; retry the failed document job')
     const documents = await this.evidence(current)
-    const agent = await DocumentVerification.evaluate(current, documents)
+    const [agent, deterministic] = await Promise.all([
+      DocumentVerification.evaluate(current, documents),
+      Verification.evaluate(current, documents),
+    ])
     // Keep established policy checks and ownership screening. Agent findings can require
     // review, but cannot override a failed deterministic check or a compliance hold.
-    const findings = (await Verification.evaluate(current, documents)).map((finding) => {
+    const findings = deterministic.map((finding) => {
       const checked = agent.find((item) => item.rule === finding.rule)
       if (!checked) return finding
       return {
@@ -278,6 +283,14 @@ export class Worker {
           items.findIndex((other) => other.documentId === item.documentId && other.page === item.page) === index),
       }
     }).filter((finding) => current.policy.rules.includes(finding.rule))
+    const certificate = findings.find((finding) => finding.rule === 'CERTIFICATE_SCOPE' && finding.result !== 'PASS')
+    if (certificate) {
+      const availableMs = work.leaseUntil
+        ? work.leaseUntil.getTime() - Date.now() - Worker.VERIFICATION_COMMIT_RESERVE_MS
+        : undefined
+      const suggestion = await ReviewEvidence.generateScopeSuggestion(current, documents.get('CERTIFICATE') ?? [], availableMs)
+      if (suggestion) certificate.trace = { ...certificate.trace, ...suggestion }
+    }
     await this.commit(work, async (tx) => {
       const latest = await Commands.caseRow(actor, submission.caseId, tx)
       if (latest.currentNumber !== submission.number || !['SUBMITTED', 'PENDING'].includes(latest.status)) return

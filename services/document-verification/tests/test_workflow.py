@@ -164,3 +164,28 @@ def test_extraction_and_size_limits():
         assert response.json()['pages'][0]['documentId'] == 'document'
         assert client.post('/v1/extract/document', content=b'bad', headers=headers).status_code == 422
         assert client.post('/v1/extract/document', content=b'x', headers={**headers, 'Content-Length': '10485761'}).status_code == 413
+
+
+def test_certificate_model_route_requires_auth_and_redacts_failures():
+    from unittest.mock import AsyncMock
+    from vendor_verification.models import CertificateGenerationResponse
+
+    source = provider()
+    source.generate_certificate_evidence = AsyncMock(side_effect=[
+        CertificateGenerationResponse(model='gemini-test', text='{"inspect": [1]}'),
+        RuntimeError('private certificate excerpt'),
+    ])
+    path = '/v1/certificate-scope/generate'
+    payload = {'instruction': 'Select evidence.', 'data': '{"index": [1]}'}
+    headers = {'Authorization': f'Bearer {TOKEN}'}
+    with TestClient(create_app(source, TOKEN)) as client:
+        assert client.post(path, json=payload).status_code in {401, 403}
+        assert client.post(path, headers=headers, json={**payload, 'data': 'x' * 100_001}).status_code == 422
+        success = client.post(path, headers=headers, json=payload)
+        assert success.status_code == 200
+        assert success.headers['cache-control'] == 'no-store'
+        assert success.json() == {'model': 'gemini-test', 'text': '{"inspect": [1]}'}
+        failure = client.post(path, headers=headers, json=payload)
+        assert failure.status_code == 503
+        assert 'private certificate' not in failure.text
+        assert source.generate_certificate_evidence.await_count == 2

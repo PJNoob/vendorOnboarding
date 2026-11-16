@@ -16,7 +16,7 @@ export interface Context {
 }
 
 export class ContextFactory {
-  static async create({ req }: { req: NextApiRequest }): Promise<Context> {
+  static async create({ req, acceptEnrollment = true }: { req: NextApiRequest; acceptEnrollment?: boolean }): Promise<Context> {
     const session = await Authentication.get().api.getSession({ headers: fromNodeHeaders(req.headers) })
     if (!session) return { origin: req.headers.origin }
     if (session.session.authChannel === Security.DEMO && (!demoAuthEnabled() || !isLoopbackConnection(req.socket.remoteAddress))) {
@@ -29,7 +29,7 @@ export class ContextFactory {
       tenantId: typeof requested === 'string' ? requested : '',
       verified: session.user.emailVerified,
     }
-    await TeamService.accept(actor)
+    if (acceptEnrollment) await TeamService.accept(actor)
     return { actor, origin: req.headers.origin }
   }
 }

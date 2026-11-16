@@ -17,14 +17,21 @@ export class DocumentVerification {
   static readonly RULES = ['BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'ENTITY_CONSISTENCY', 'TAX_PROFILE'] as const
   static readonly TIMEOUT = 120_000
 
-  private static async request(path: string, body: string | Buffer, contentType: string) {
+  private static async request(path: string, body: string | Buffer, contentType: string,
+    signal = AbortSignal.timeout(DocumentVerification.TIMEOUT)) {
     if (!env.DOCUMENT_SERVICE_TOKEN) throw new Error('DOCUMENT_SERVICE_TOKEN is not configured')
     const response = await fetch(new URL(path, env.DOCUMENT_SERVICE_URL), {
       method: 'POST', headers: { Authorization: `Bearer ${env.DOCUMENT_SERVICE_TOKEN}`, 'Content-Type': contentType },
-      body: typeof body === 'string' ? body : new Uint8Array(body), signal: AbortSignal.timeout(DocumentVerification.TIMEOUT),
+      body: typeof body === 'string' ? body : new Uint8Array(body), redirect: 'error', signal,
     })
     if (!response.ok) throw new Error(`document service unavailable (${response.status})`)
     return response.json()
+  }
+
+  static async generateCertificateEvidence(instruction: string, data: unknown, signal: AbortSignal) {
+    const response = await this.request('/v1/certificate-scope/generate',
+      JSON.stringify({ instruction, data: JSON.stringify(data) }), 'application/json', signal)
+    return z.strictObject({ model: z.string().min(1).max(128), text: z.string().min(1).max(10_000) }).parse(response)
   }
 
   static async extract(documentId: string, bytes: Buffer): Promise<Evidence[]> {

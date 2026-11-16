@@ -9,7 +9,7 @@ from google.cloud import documentai_v1 as documentai
 from google.api_core.client_options import ClientOptions
 from pypdf import PdfReader, PdfWriter
 
-from .models import Document, Extraction, Page
+from .models import CertificateGenerationRequest, CertificateGenerationResponse, Document, Extraction, Page
 
 
 class GoogleProviders:
@@ -59,6 +59,19 @@ class GoogleProviders:
             ),
         )
         return Extraction.model_validate_json(response.text or '')
+
+    async def generate_certificate_evidence(self, request: CertificateGenerationRequest) -> CertificateGenerationResponse:
+        response = await self.gemini.aio.models.generate_content(
+            model=self.model,
+            contents=request.data,
+            config=types.GenerateContentConfig(
+                system_instruction=request.instruction,
+                temperature=0,
+                max_output_tokens=4096,
+                response_mime_type='application/json',
+            ),
+        )
+        return CertificateGenerationResponse(model=self.model, text=response.text or '')
 
     async def pages(self, document_id: str, content: bytes) -> list[Page]:
         def chunks():

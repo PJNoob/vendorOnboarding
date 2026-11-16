@@ -8,6 +8,7 @@ webReplicas: 2
 workerReplicas: 1
 commitSha: ''
 documentService:
+  certificateRlmProvider: gemini
   image: vendor-document-verification:local
 
 nodePool:

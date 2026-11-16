@@ -32,6 +32,9 @@ export const env = createEnv({
     APP_URL: z.url(),
     BETTER_AUTH_SECRET: z.string().min(32),
     BOOTSTRAP_ADMIN_EMAIL: z.email(),
+    CERTIFICATE_RLM_MODEL: z.string().trim().min(1).max(128).default('qwen3:8b'),
+    CERTIFICATE_RLM_PROVIDER: z.enum(['ollama', 'gemini', 'disabled']).default('ollama'),
+    CERTIFICATE_RLM_URL: z.preprocess((value) => value === '' ? undefined : value, z.url({ protocol: /^https?$/ }).optional()),
     DATABASE_POOL_SIZE: z.coerce.number().int().positive(),
     DATABASE_URL: z.url(),
     DEMO_AUTH: z.enum(RuntimeValues.BOOLEAN).default('false'),
@@ -53,8 +56,14 @@ export const env = createEnv({
     RESEND_API_KEY: z.string().min(1),
     MAILTESTER_NINJA_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     REST_COUNTRIES_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
-    SCREENING_TOKEN: z.string().min(1),
-    SCREENING_URL: z.url(),
+    SCREENING_PROVIDER: z.enum(['http', 'ofac']).default('http'),
+    SCREENING_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    SCREENING_URL: z.preprocess((value) => value === '' ? undefined : value, z.url().optional()),
   },
   skipValidation: process.env.NEXT_PHASE === 'phase-production-build',
 })
+
+if (process.env.NEXT_PHASE !== 'phase-production-build' && env.DEMO_SCREENING === 'false' &&
+  env.SCREENING_PROVIDER === 'http' && (!env.SCREENING_TOKEN || !env.SCREENING_URL)) {
+  throw new Error('SCREENING_TOKEN and SCREENING_URL are required for the HTTP screening provider')
+}

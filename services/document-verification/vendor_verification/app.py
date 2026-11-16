@@ -8,9 +8,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import ValidationError
 
 from .graph import build_graph
-from .models import Report, VerificationRequest
+from .models import CertificateGenerationRequest, CertificateGenerationResponse, Report, VerificationRequest
 
 logger = logging.getLogger('vendor_verification')
 MAX_BYTES = 10_485_760
@@ -53,11 +54,11 @@ def create_app(providers=None, token=None):
         response.headers['Cache-Control'] = 'no-store'
         return response
 
-    async def body(request):
+    async def body(request, limit=MAX_BYTES):
         content = bytearray()
         async for chunk in request.stream():
             content.extend(chunk)
-            if len(content) > MAX_BYTES:
+            if len(content) > limit:
                 raise HTTPException(status_code=413, detail='Request too large')
         return bytes(content)
 
@@ -79,7 +80,6 @@ def create_app(providers=None, token=None):
 
     @app.post('/v1/verify', response_model=Report, dependencies=[Depends(authorized)])
     async def verify(request: Request):
-        from pydantic import ValidationError
         try:
             payload = VerificationRequest.model_validate_json(await body(request))
         except ValidationError:
@@ -91,5 +91,17 @@ def create_app(providers=None, token=None):
         except Exception:
             logger.warning('document.verification.failed')
             raise HTTPException(status_code=503, detail='Document verification unavailable') from None
+
+    @app.post('/v1/certificate-scope/generate', response_model=CertificateGenerationResponse, dependencies=[Depends(authorized)])
+    async def generate_certificate_scope(request: Request):
+        try:
+            payload = CertificateGenerationRequest.model_validate_json(await body(request, limit=512_000))
+        except ValidationError:
+            raise HTTPException(status_code=422, detail='Invalid certificate scope request') from None
+        try:
+            return await asyncio.wait_for(providers.generate_certificate_evidence(payload), timeout=40)
+        except Exception:
+            logger.warning('certificate.scope.model.unavailable')
+            raise HTTPException(status_code=503, detail='Certificate scope model unavailable') from None
 
     return app

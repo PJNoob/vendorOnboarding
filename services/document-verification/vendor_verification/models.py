@@ -84,3 +84,13 @@ class Report(StrictModel):
     version: str = 'langgraph-gemini-v1'
     recommendation: Literal['CONSISTENT', 'NEEDS_REVIEW']
     findings: list[Finding]
+
+
+class CertificateGenerationRequest(StrictModel):
+    instruction: str = Field(min_length=1, max_length=1024)
+    data: str = Field(min_length=1, max_length=100_000)
+
+
+class CertificateGenerationResponse(StrictModel):
+    model: str = Field(min_length=1, max_length=128)
+    text: str = Field(min_length=1, max_length=10_000)

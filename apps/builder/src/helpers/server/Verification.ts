@@ -4,6 +4,7 @@ import { env } from '@neo/env'
 import { Prisma, type CheckResult, type DocumentKind, type SourceMode } from '@neo/prisma'
 
 import { Commands } from './Commands'
+import { screenOfac } from './OfacScreening'
 import { Secrets } from './Security'
 
 export interface Evidence {
@@ -46,10 +47,14 @@ export class Verification {
           .map((item) => ({ key: item.entityKey, match: 'BLOCKED' as const })),
       }
     }
-    const response = await fetch(env.SCREENING_URL, {
-      body: JSON.stringify({ entities: entities.map(({ country, entityKey, legalName, registryId }) => ({
-        country, key: entityKey, name: legalName, ...(registryId ? { registryId } : {}),
-      })) }),
+    const subjects = entities.map(({ country, entityKey, legalName, registryId }) => ({
+      country, key: entityKey, name: legalName, ...(registryId ? { registryId } : {}),
+    }))
+    if (env.SCREENING_PROVIDER === 'ofac') return screenOfac(subjects)
+    const url = env.SCREENING_URL
+    Commands.require(url && env.SCREENING_TOKEN, 'HTTP screening provider is not configured')
+    const response = await fetch(url, {
+      body: JSON.stringify({ entities: subjects }),
       headers: { Authorization: `Bearer ${env.SCREENING_TOKEN}`, 'Content-Type': 'application/json' },
       method: 'POST',
       signal: AbortSignal.timeout(Verification.TIMEOUT_MS),
@@ -94,7 +99,7 @@ export class Verification {
         }
       }
     }
-    const trace = { blocked: [...blocked], dataset: screening.dataset }
+    const trace = { ...screening, blocked: [...blocked] }
     if (blocked.has(vendor.entityKey)) {
       return { ...base, code: 'OWNERSHIP_BLOCKED_CHAIN', message: '', result: 'REVIEW', trace }
     }
@@ -116,6 +121,13 @@ export class Verification {
     return true
   }
 
+  static certificateStandards(current: Current) {
+    const { row, snapshot } = current
+    return [...new Set(snapshot.qualification_submission.filter((item) =>
+      Verification.compact(item.site) === Verification.compact(row.requestedSite) &&
+      Verification.compact(item.activity) === Verification.compact(row.category)).map(({ standard }) => standard))]
+  }
+
   static async evaluate(current: Current, documents: Map<DocumentKind, Evidence[]>) {
     const { row, snapshot } = current
     const { bankProfile, companyProfile, taxProfile } = snapshot
@@ -131,13 +143,15 @@ export class Verification {
       ? taxProfile.formType === 'W9' && /^\d{9}$/.test(taxId.replace(/-/g, '')) && Verification.has(taxId, tax)
       : taxProfile.formType === 'OTHER_REVIEW' && !taxProfile.vatRegistered ||
         taxProfile.vatRegistered && /^\d{15}$/.test(vat) && Verification.has(vat, tax)
+    const standards = Verification.certificateStandards(current)
+    const certificateFinding = Verification.local('CERTIFICATE_SCOPE', certificate.some((item) =>
+      Verification.has(row.requestedSite, [item]) && Verification.has(row.category, [item]) &&
+      standards.some((standard) => Verification.has(standard, [item]))),
+      certificate, 'SCOPE_MISMATCH', 'Upload the certificate scope annex covering the requested site and calibration activity.')
     const findings: Finding[] = [
       Verification.local('BANK_BENEFICIARY', Verification.compact(bankProfile.beneficiary) === Verification.compact(companyProfile.legalName)
         && Verification.has(bankProfile.beneficiary, bank) && Verification.has(account, bank), bank, 'BANK_MISMATCH', 'Provide bank evidence matching the company name and account.'),
-      Verification.local('CERTIFICATE_SCOPE', certificate.some((item) => Verification.has(row.requestedSite, [item]) && Verification.has(row.category, [item]) && snapshot.qualification_submission.some((qualification) =>
-          Verification.compact(qualification.site) === Verification.compact(row.requestedSite) &&
-          Verification.compact(qualification.activity) === Verification.compact(row.category) && Verification.has(qualification.standard, [item]))),
-        certificate, 'SCOPE_MISMATCH', 'Upload the certificate scope annex covering the requested site and calibration activity.'),
+      certificateFinding,
       Verification.local('ENTITY_CONSISTENCY', Verification.has(companyProfile.legalName, registration) && Verification.has(companyProfile.registryId, registration),
         registration, 'REGISTRATION_MISMATCH', 'Provide registration evidence matching the company name and registration identifier.'),
       Verification.local('TAX_PROFILE', taxOk, tax, 'TAX_MISMATCH', 'Correct the tax details and provide matching tax evidence.'),

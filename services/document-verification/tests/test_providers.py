@@ -74,3 +74,25 @@ def test_generation_schema_keeps_types_and_runtime_validation_stays_strict():
     ]:
         with pytest.raises(ValidationError):
             Extraction.model_validate(invalid)
+
+
+def test_certificate_generation_reuses_the_document_gemini_model():
+    from vendor_verification.models import CertificateGenerationRequest
+
+    provider = GoogleProviders.__new__(GoogleProviders)
+    provider.model = 'configured-document-model'
+    generate = AsyncMock(side_effect=[
+        SimpleNamespace(text='{"fields": []}'),
+        SimpleNamespace(text='{"inspect": [1]}'),
+    ])
+    provider.gemini = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
+    from vendor_verification.models import Document
+    asyncio.run(provider.extract(Document(documentId='certificate', kind='CERTIFICATE', pages=[])))
+    result = asyncio.run(provider.generate_certificate_evidence(CertificateGenerationRequest(
+        instruction='Select evidence pages', data='{"index": [1]}',
+    )))
+    first, second = [call.kwargs for call in generate.await_args_list]
+    assert first['model'] == second['model'] == result.model == 'configured-document-model'
+    assert second['contents'] == '{"index": [1]}'
+    assert second['config'].response_mime_type == 'application/json'
+    assert result.text == '{"inspect": [1]}'

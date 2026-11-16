@@ -514,6 +514,17 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
           {role && <SupplierDetails detail={detail} />}
           {detail.issues.length > 0 && <div className="issues"><h3>Needs attention</h3>{detail.issues.map((issue) => <p key={issue.id}>{issue.message || Workspace.label(issue.code)}</p>)}</div>}
           {detail.verificationReport && <details className="check-details"><summary>Cross-document verification — {Workspace.label(detail.verificationReport.recommendation)}</summary><p>Consistency findings support the internal review. A reviewer makes the final decision.</p>{detail.verificationReport.findings.map((finding) => <div key={finding.rule}><h3>{Workspace.label(finding.rule)} · {Workspace.label(finding.result)}</h3><p>{finding.message}</p>{finding.evidence.map((item, index) => <p key={`${item.documentId}-${item.field}-${index}`}><strong>{Workspace.label(item.field)}: {item.value}</strong> · {Workspace.label(detail.documents.find((document) => document.id === item.documentId)?.kind ?? item.documentId)}, page {item.page}<br /><q>{item.quote}</q></p>)}</div>)}</details>}
+          {detail.certificateScopeReview && <details className="check-details">
+            <summary>Certificate scope suggestions</summary>
+            {detail.certificateScopeReview.status === 'unavailable' && <p>Certificate evidence suggestions are unavailable.</p>}
+            {detail.certificateScopeReview.status === 'no_evidence' && <p>No candidate evidence was found.</p>}
+            {detail.certificateScopeReview.citations.length > 0 && <>
+              <p>Verify these excerpts against the certificate and its annex before making a decision.</p>
+              <ul>{detail.certificateScopeReview.citations.map((citation) =>
+                <li key={JSON.stringify(citation)}><strong>{Workspace.label(citation.field)}</strong> · Document {citation.documentId}, page {citation.page} · <q>{citation.quote}</q></li>,
+              )}</ul>
+            </>}
+          </details>}
           {detail.checks.length > 0 && <details className="check-details"><summary>Verification results <span className="count-label">{detail.checks.length}</span></summary>{detail.checks.map((check, index) => <p key={`${check.rule}-${index}`}><strong>{Workspace.label(check.rule)}</strong> — {Workspace.label(check.result)} · {check.source} · {check.code}{check.evidence.length > 0 && ` · pages ${check.evidence.map((item) => item.page).join(', ')}`}</p>)}</details>}
           {detail.case.status === 'INVITED' && detail.case.invitationDelivery === 'INVALID' && <p role="alert">Incorrect supplier credentials. Enter the correct supplier email.</p>}
           {detail.case.status === 'INVITED' && detail.case.invitationDelivery === 'VERIFICATION_FAILED' && <p role="alert">Email verification failed. No invitation was sent. Check the verification service configuration and retry.</p>}
