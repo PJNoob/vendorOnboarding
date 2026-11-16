@@ -75,7 +75,10 @@ Inspect runs under Google Cloud Console → Cloud Build → History in `asia-sou
 The build log records checked/deployed SHA and skipped superseded builds. GitHub
 shows Cloud Build results on commits and pull requests. Once the PR check context
 has appeared, require that exact context in the `main` branch rules if the GitHub
-plan supports required checks on this private repository.
+plan supports required checks on this private repository. The current plan does
+not support private-repository branch protection; Cloud Build still gates every
+production deployment on successful checks. Enabling GitHub Pro would additionally
+allow enforcing those checks before a pull request can merge.
 
 For a failed migration inspect `vendor-migrate-*` Jobs and their `migrate` container
 logs using an authorized operator. Resolve the schema problem with a new commit;
