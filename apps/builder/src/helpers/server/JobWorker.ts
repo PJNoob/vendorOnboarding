@@ -282,7 +282,7 @@ export class Worker {
         evidence: [...finding.evidence, ...checked.evidence].filter((item, index, items) =>
           items.findIndex((other) => other.documentId === item.documentId && other.page === item.page) === index),
       }
-    }).filter((finding) => current.policy.rules.includes(finding.rule))
+    }).filter((finding) => Commands.rules(current.policy).includes(finding.rule))
     const certificate = findings.find((finding) => finding.rule === 'CERTIFICATE_SCOPE' && finding.result !== 'PASS')
     if (certificate) {
       const availableMs = work.leaseUntil

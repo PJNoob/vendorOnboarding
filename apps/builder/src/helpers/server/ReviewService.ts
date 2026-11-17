@@ -16,7 +16,7 @@ export class ReviewService {
   static readonly COMPLIANCE = ['ADMIN', 'COMPLIANCE'] as const
   static readonly REQUESTERS = ['ADMIN', 'BUYER', 'REVIEWER'] as const
   static readonly REVIEWERS = ['ADMIN', 'REVIEWER'] as const
-  static readonly RULES = ['BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'ENTITY_CONSISTENCY', 'OWNERSHIP_SCREENING', 'TAX_PROFILE'] as const
+  static readonly RULES = ['ADVERSE_SCREENING', 'BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'COUNTRY_RESTRICTION', 'ENTITY_CONSISTENCY', 'OWNERSHIP_SCREENING', 'TAX_PROFILE'] as const
 
   private static async current(actor: Actor, input: Input<'decide'> | Input<'request'> | Input<'resolve'> | Input<'resolveHold'>, tx: TransactionClient) {
     const current = await Commands.current(actor, input.caseId, tx)
@@ -70,7 +70,7 @@ export class ReviewService {
   static assertApproval(rules: string[], snapshot: Snapshot) {
     const now = new Date()
     Commands.require(!snapshot.issue_submission.some((issue) => !issue.resolvedAt), 'resolve all open issues before approval')
-    Commands.require(rules.every((rule) => {
+    Commands.require(Commands.rules({ rules }).every((rule) => {
       const check = snapshot.checkRun_submission.find((item) => item.ruleKey === rule)
       return check?.result === 'PASS' && (!check.validUntil || check.validUntil > now)
     }), 'all mandatory checks must pass and be current')

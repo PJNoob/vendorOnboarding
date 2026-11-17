@@ -42,6 +42,18 @@ Reference: [Better Auth Google configuration](https://better-auth.com/docs/authe
 
 ## Country directory
 
+## Banned-country and web ban screening
+
+Two checks run on every case, whatever the tenant policy lists. `COUNTRY_RESTRICTION` fails a case when the supplier, company or bank country is banned (default CU, IR, KP, SY; a policy can set `bannedCountries`) and sends owners in banned countries to compliance. `ADVERSE_SCREENING` searches the web through SearchApi.io for bans, sanctions or debarment naming the vendor and owners holding 25% or more, and always sends hits or provider failures to a person.
+
+The API key lives in the Secret Manager secret `vendor-serp-api-key` (declared in Terraform, version added outside Terraform). `scripts/ci/deploy.py` copies it into the Kubernetes Secret as `SERP_API_KEY`. Without a key the check routes every case to review with `SCREENING_UNAVAILABLE`. Add a version with:
+
+```bash
+printf %s "$KEY" | gcloud secrets versions add vendor-serp-api-key --data-file=- --project=PROJECT_ID
+```
+
+The deploying identity needs `roles/secretmanager.secretAccessor` on `vendor-serp-api-key`.
+
 Set `REST_COUNTRIES_API_KEY` in the ignored `apps/builder/.env.local` file and in the `vendor-app-config` Secret Manager JSON. Sync that secret to Kubernetes and roll out the web deployment to load a new value. Keep the key server-only; do not use a `NEXT_PUBLIC_` variable.
 
 The server requests REST Countries v5 using bearer authentication, follows pagination in batches of 100, and caches the sorted country names and two-letter codes for six hours. Supplier invitation, company, bank, and ownership forms use this directory. Records without a two-letter code are excluded. An API outage retains the last successful list, or falls back to US/UAE, and retries after a minute. Run the seed command after deployment to add the existing baseline onboarding policy for every country in the directory. Existing published policies are preserved.

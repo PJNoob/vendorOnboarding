@@ -47,6 +47,7 @@ variable "secret_names" {
     "vendor-redis-url",
     "vendor-resend-api-key",
     "vendor-screening-token",
+    "vendor-serp-api-key",
   ]
 }
 

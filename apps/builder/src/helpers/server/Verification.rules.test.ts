@@ -70,3 +70,44 @@ test('correct and unreadable documents do not trigger the document-type check', 
   ]))
   assert.deepEqual([finding.result, finding.code, finding.message], ['PASS', 'MATCHED', ''])
 })
+
+const country = (overrides: { bank?: string; company?: string; owners?: string[]; policy?: string[]; row?: string } = {}) => ({
+  policy: { bannedCountries: overrides.policy, documents: [], rules: [] },
+  row: { country: overrides.row ?? 'US' },
+  snapshot: {
+    bankProfile: { country: overrides.bank ?? 'US' }, companyProfile: { country: overrides.company ?? 'US' },
+    ownershipEdge_submission: [{ ownedEntityKey: 'vendor', ownerEntityKey: 'owner', percentage: 60 }],
+    ownershipEntity_submission: [
+      { country: 'US', entityKey: 'vendor', isVendor: true, legalName: 'Vendor Ltd' },
+      ...(overrides.owners ?? []).map((code) => ({ country: code, entityKey: 'owner', isVendor: false, legalName: 'Owner Ltd' })),
+    ],
+  },
+}) as never
+
+test('a banned supplier, company or bank country fails the country check', () => {
+  for (const overrides of [{ row: 'IR' }, { company: 'KP' }, { bank: 'SY' }]) {
+    const finding = Verification.countryRestriction(country(overrides))
+    assert.deepEqual([finding.result, finding.code], ['FAIL', 'COUNTRY_BANNED'])
+  }
+  assert.equal(Verification.countryRestriction(country()).result, 'PASS')
+})
+
+test('an owner in a banned country goes to compliance review and a tenant list overrides the default', () => {
+  const owner = Verification.countryRestriction(country({ owners: ['CU'] }))
+  assert.deepEqual([owner.result, owner.code, owner.message], ['REVIEW', 'OWNER_COUNTRY_BANNED', ''])
+  assert.equal(Verification.countryRestriction(country({ policy: ['RU'], row: 'IR' })).result, 'PASS')
+  assert.equal(Verification.countryRestriction(country({ policy: ['RU'], row: 'RU' })).result, 'FAIL')
+})
+
+test('adverse screening reviews hits and provider failures but passes clean results', async () => {
+  const entity = country()
+  const serp = (search: () => Promise<never[]>) => ({ configured: true, search }) as never
+  const hit = [{ link: 'https://x.gov', official: true, snippet: 's', title: 't' }] as never[]
+  const flagged = await Verification.adverse(entity, serp(async () => hit), false)
+  assert.deepEqual([flagged.result, flagged.code, flagged.message], ['REVIEW', 'ADVERSE_MEDIA_MATCH', ''])
+  const failed = await Verification.adverse(entity, serp(async () => { throw new Error('down') }), false)
+  assert.deepEqual([failed.result, failed.code], ['REVIEW', 'SCREENING_UNAVAILABLE'])
+  assert.equal((await Verification.adverse(entity, serp(async () => []), false)).result, 'PASS')
+  assert.equal((await Verification.adverse(entity, { configured: false } as never, false)).code, 'SCREENING_UNAVAILABLE')
+  assert.equal((await Verification.adverse(entity, { configured: false } as never, true)).source, 'FIXTURE')
+})
