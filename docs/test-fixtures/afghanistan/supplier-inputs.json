@@ -1,0 +1,95 @@
+{
+  "invitation": {
+    "category": "CALIBRATION",
+    "country": "AF",
+    "requestedSite": "Calibration Laboratory, Pul-e-Charkhi Industrial Park, Kabul",
+    "supplierEmail": "procurement@hindukush-calibration.example"
+  },
+  "company": {
+    "legalName": "Hindukush Precision Calibration Company Limited",
+    "registryId": "AF-REG-2019-0048713",
+    "jurisdiction": "Afghanistan",
+    "country": "AF",
+    "addressLine1": "House 27, Street 4, Shahr-e-Naw",
+    "city": "Kabul",
+    "contactName": "Mariam Sediqi",
+    "contactEmail": "procurement@hindukush-calibration.example"
+  },
+  "bank": {
+    "beneficiary": "Hindukush Precision Calibration Company Limited",
+    "account": "0100234567891",
+    "country": "AF",
+    "currency": "AFN",
+    "routing": "HKCBAFKX"
+  },
+  "tax": {
+    "formType": "OTHER_REVIEW",
+    "taxId": "4012345678",
+    "vatRegistered": false
+  },
+  "qualifications": [
+    {
+      "activity": "CALIBRATION",
+      "site": "Calibration Laboratory, Pul-e-Charkhi Industrial Park, Kabul",
+      "standard": "ISO/IEC 17025:2017"
+    }
+  ],
+  "ownership": {
+    "entities": [
+      {
+        "key": "vendor",
+        "legalName": "Hindukush Precision Calibration Company Limited",
+        "country": "AF",
+        "isVendor": true,
+        "registryId": "AF-REG-2019-0048713"
+      },
+      {
+        "key": "parent",
+        "legalName": "Khorasan Metrology Holdings Limited",
+        "country": "AF",
+        "isVendor": false,
+        "registryId": "AF-REG-2015-0012044"
+      },
+      {
+        "key": "owner-ahmad",
+        "legalName": "Ahmad Zia Rahimi",
+        "country": "AF",
+        "isVendor": false
+      },
+      {
+        "key": "owner-sima",
+        "legalName": "Sima Rahimi",
+        "country": "AF",
+        "isVendor": false
+      },
+      {
+        "key": "owner-daniel",
+        "legalName": "Daniel Whitmore",
+        "country": "GB",
+        "isVendor": false
+      }
+    ],
+    "edges": [
+      {
+        "ownerKey": "parent",
+        "ownedKey": "vendor",
+        "percentage": "70"
+      },
+      {
+        "ownerKey": "owner-ahmad",
+        "ownedKey": "vendor",
+        "percentage": "30"
+      },
+      {
+        "ownerKey": "owner-sima",
+        "ownedKey": "parent",
+        "percentage": "55"
+      },
+      {
+        "ownerKey": "owner-daniel",
+        "ownedKey": "parent",
+        "percentage": "45"
+      }
+    ]
+  }
+}
