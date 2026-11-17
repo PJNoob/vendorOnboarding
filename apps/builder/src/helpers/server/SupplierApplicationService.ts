@@ -1,20 +1,13 @@
-import { demoAuthEnabled } from '@neo/env'
 import { TRPCError } from '@trpc/server'
 
 import { CaseAccessRepository, OnboardingCaseRepository, PolicyVersionRepository, SubmissionRepository } from '@neo/prisma/repositories'
 import type { Input } from '@neo/schemas'
 
 import { Commands } from './Commands'
-import { demoIdentity } from './DemoIdentity'
 import { type Actor, Security } from './Security'
 import { TeamService } from './TeamService'
 
 export class SupplierApplicationService {
-  // Local demo workspaces receive self-started applications so the demo admin can review them.
-  static tenant() {
-    return demoAuthEnabled() ? demoIdentity.tenantId : TeamService.BOOTSTRAP_TENANT
-  }
-
   static async create(actor: Actor, input: Input<'createSupplierApplication'>) {
     const authorize = async () => {
       if (actor.channel !== Security.SUPPLIER || !actor.verified) {
@@ -22,7 +15,7 @@ export class SupplierApplicationService {
       }
     }
     await authorize()
-    const scoped = { ...actor, tenantId: SupplierApplicationService.tenant() }
+    const scoped = { ...actor, tenantId: TeamService.BOOTSTRAP_TENANT }
     return Commands.execute(scoped, 'supplier.create', input, authorize, async (tx) => {
       const policy = await PolicyVersionRepository.findFirst({
         orderBy: { version: 'desc' },
