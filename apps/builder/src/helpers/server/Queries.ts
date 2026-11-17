@@ -101,6 +101,8 @@ export class Queries {
     const buyer = Security.isBuyer(actor)
     const membership = buyer ? await Security.buyer(scoped, Queries.READERS) : undefined
     const privileged = membership?.role === 'ADMIN' || membership?.role === 'REVIEWER' || membership?.role === 'COMPLIANCE'
+    const submittedBySupplier = actor.channel === Security.SUPPLIER && snapshot.submittedAt && snapshot.submittedById === actor.id
+    const canReadFinancialFields = privileged || submittedBySupplier
     const { bankProfile, companyProfile, taxProfile } = snapshot
     const invite = buyer ? await InvitationRepository.findFirst({
       orderBy: { createdAt: 'desc' }, where: { caseId, tenantId: scoped.tenantId },
@@ -148,7 +150,7 @@ export class Queries {
           createdAt: row.createdAt.toISOString(), submittedAt: snapshot.submittedAt?.toISOString() ?? '',
           attestedAt: snapshot.attestedAt?.toISOString() ?? '', status: row.status },
         ...(bankProfile ? { bank: { accountLast4: bankProfile.accountLast4, beneficiary: bankProfile.beneficiary, country: bankProfile.country, currency: bankProfile.currency,
-          ...(privileged ? { account: Secrets.decrypt(bankProfile.accountCiphertext, scoped.tenantId), routing: bankProfile.routingCiphertext ? Secrets.decrypt(bankProfile.routingCiphertext, scoped.tenantId) : '' } : {}) } } : {}),
+          ...(canReadFinancialFields ? { account: Secrets.decrypt(bankProfile.accountCiphertext, scoped.tenantId), routing: bankProfile.routingCiphertext ? Secrets.decrypt(bankProfile.routingCiphertext, scoped.tenantId) : '' } : {}) } } : {}),
         ...(companyProfile ? { company: {
           addressLine1: companyProfile.addressLine1, city: companyProfile.city, contactEmail: companyProfile.contactEmail,
           contactName: companyProfile.contactName, country: companyProfile.country, jurisdiction: companyProfile.jurisdiction,
@@ -156,7 +158,7 @@ export class Queries {
           addressLine2: companyProfile.addressLine2 ?? '', postalCode: companyProfile.postalCode ?? '',
         } } : {}),
         ...(taxProfile ? { tax: { formType: taxProfile.formType, vatRegistered: taxProfile.vatRegistered,
-          ...(privileged ? { taxId: taxProfile.taxIdCiphertext ? Secrets.decrypt(taxProfile.taxIdCiphertext, scoped.tenantId) : '', vatTrn: taxProfile.vatTrnCiphertext ? Secrets.decrypt(taxProfile.vatTrnCiphertext, scoped.tenantId) : '' } : {}) } } : {}),
+          ...(canReadFinancialFields ? { taxId: taxProfile.taxIdCiphertext ? Secrets.decrypt(taxProfile.taxIdCiphertext, scoped.tenantId) : '', vatTrn: taxProfile.vatTrnCiphertext ? Secrets.decrypt(taxProfile.vatTrnCiphertext, scoped.tenantId) : '' } : {}) } } : {}),
         ...(invite ? { invitation: { id: invite.id, email: Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) } } : {}),
         ...(buyer ? { access: accesses.map((item) => ({ userId: item.userId, name: item.user.name, email: item.user.email })),
           work: snapshot.workItem_submission.filter((item) => item.state === 'FAILED').map((item) => ({ id: item.id, kind: item.kind })) } : {}),

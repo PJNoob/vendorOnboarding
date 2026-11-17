@@ -31,3 +31,54 @@ test('supplier requests and actionable issues appear on the requester overview',
   const html = renderToStaticMarkup(createElement(RequesterWorkspace, { countries: [] }))
   for (const text of ['Supplier requests &amp; issues', 'supplier@example.test', 'Boston laboratory', '1 open issues', 'Account differs from the bank evidence.', 'Review request']) assert.ok(html.includes(text), text)
 })
+
+function supplierDetail(status: Output<'detail'>['case']['status']): Output<'detail'> {
+  return {
+    case: { ...summary, issueCount: 0, status, submittedAt: status === 'DRAFT' ? undefined : summary.submittedAt },
+    checks: [], decisions: [], issues: [], required: ['BANK', 'TAX'], draftRevision: 4,
+    documents: [
+      { id: 'bank', kind: 'BANK', status: 'CLEAN' },
+      { id: 'tax', kind: 'TAX', status: status === 'DRAFT' ? 'UPLOADED' : 'CLEAN' },
+    ],
+    run: { stages: [] }, submissionId: 'submission',
+    values: {
+      company: { legalName: 'QA Vendor' },
+      bank: { beneficiary: 'QA Vendor', account: '123456789012' },
+      ...(status !== 'DRAFT' ? { tax: { formType: 'W9', taxId: '12-3456789' } } : {}),
+      qualifications: [{ activity: 'Calibration', site: 'Boston laboratory', standard: 'ISO17025' }],
+      ownership: { entities: [{ key: 'vendor', country: 'US', legalName: 'QA Vendor', isVendor: true }], edges: [] },
+    },
+  }
+}
+
+function renderSupplier(detail: Output<'detail'>) {
+  class SupplierWorkspace extends Workspace {
+    constructor(props: Workspace['props']) {
+      super(props)
+      this.state = { ...this.state, loading: false, email: 'supplier@example.test', authChannel: 'EMAIL_OTP', detail }
+    }
+  }
+  return renderToStaticMarkup(createElement(SupplierWorkspace, { countries: [{ code: 'US', name: 'United States' }] }))
+}
+
+test('draft steps show saved sections and wait for clean PDFs before marking Documents complete', () => {
+  const detail = supplierDetail('DRAFT')
+  const html = renderSupplier(detail)
+  for (const step of ['Company', 'Banking', 'Qualifications', 'Ownership']) {
+    assert.ok(html.includes(step + '<span class="sr-only"> saved</span>'), step)
+  }
+  assert.doesNotMatch(html, /Tax<span class="sr-only"> saved/)
+  assert.doesNotMatch(html, /Documents<span class="sr-only"> complete/)
+  detail.documents[1].status = 'CLEAN'
+  assert.match(renderSupplier(detail), /Documents<span class="sr-only"> complete/)
+})
+
+test('supplier can reopen a submitted application as a read-only record throughout review', () => {
+  for (const status of ['SUBMITTED', 'PENDING', 'APPROVED'] as const) {
+    const html = renderSupplier(supplierDetail(status))
+    for (const label of ['Submitted application', 'Company details', 'Banking details', 'Tax details', 'Ownership declaration',
+      'ISO17025', '123456789012', '12-3456789', 'Supporting documents', 'Download']) assert.ok(html.includes(label), label)
+    if (status !== 'APPROVED') assert.match(html, /Submitted for review/)
+    assert.doesNotMatch(html, /Application steps|Save company|Upload supporting document|Submit for review|>Remove</)
+  }
+})

@@ -15,7 +15,7 @@ function current() {
       createdBy: { name: 'Procurement Requester', email: 'requester@example.test' }, createdAt: now, updatedAt: now,
       requestedSite: 'Boston laboratory', revision: 4, currentNumber: 1, status: 'REJECTED' },
     policy: { documents: ['BANK'], rules: ['BANK_BENEFICIARY'] },
-    snapshot: { id: 'submission', draftRevision: 5, submittedAt: now, attestedAt: now,
+    snapshot: { id: 'submission', draftRevision: 5, submittedAt: now, attestedAt: now, submittedById: 'supplier',
       companyProfile: { legalName: 'Acme', registryId: 'REG123', country: 'US', jurisdiction: 'MA', addressLine1: '1 Main Street', city: 'Boston', contactName: 'Supplier Contact', contactEmail: 'supplier@example.test' },
       bankProfile: { beneficiary: 'Acme', accountLast4: '9012', accountCiphertext: Secrets.encrypt('123456789012', 'tenant'), routingCiphertext: Secrets.encrypt('021000021', 'tenant'), country: 'US', currency: 'USD' },
       taxProfile: { formType: 'W9', vatRegistered: false, taxIdCiphertext: Secrets.encrypt('12-3456789', 'tenant') },
@@ -93,4 +93,21 @@ test('buyer list shows supplier creator email before a self-started profile is c
   const result = await Queries.list({ tenantId: 'tenant' } as Actor, { limit: 25 })
   assert.equal(result.items[0].supplierEmail, 'supplier-creator@example.test')
   assert.equal(result.items[0].status, 'DRAFT')
+})
+
+
+test('only the submitting supplier can see the submitted financial identifiers', async () => {
+  setup('BUYER')
+  mock.method(Security, 'access', async () => ({ tenantId: 'tenant' }) as never)
+  const supplier = { id: 'supplier', channel: Security.SUPPLIER, verified: true } as Actor
+
+  const submitted = outputs.detail.parse(await Queries.detail(supplier, 'case'))
+  assert.equal((submitted.values.bank as Record<string, unknown>).account, '123456789012')
+  assert.equal((submitted.values.tax as Record<string, unknown>).taxId, '12-3456789')
+
+  const shared = outputs.detail.parse(await Queries.detail({ ...supplier, id: 'other-contact' }, 'case'))
+  const bank = shared.values.bank as Record<string, unknown>
+  assert.equal(bank.account, undefined)
+  assert.equal(bank.accountLast4, '9012')
+  assert.equal((shared.values.tax as Record<string, unknown>).taxId, undefined)
 })
