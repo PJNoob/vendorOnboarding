@@ -142,6 +142,11 @@ export const verificationReport = z.strictObject({
       observed: z.array(z.string()), status: z.enum(['MATCH', 'MISMATCH', 'MISSING_EVIDENCE']),
     })).optional(),
     evidence: z.array(z.strictObject({ documentId: id, page: z.int().positive(), field: text, value: z.string(), quote: z.string() })),
+    // Absent on reports saved before the resolution agent existed.
+    resolutions: z.array(z.strictObject({
+      field: text, verdict: z.enum(['SAME_ENTITY', 'DIFFERENT_ROLE', 'UNRESOLVED']), reason: z.string(),
+      evidence: z.array(z.strictObject({ documentId: id, page: z.int().positive(), field: text, value: z.string(), quote: z.string() })),
+    })).optional(),
   })),
 })
 export const outputs = {

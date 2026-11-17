@@ -21,6 +21,12 @@ const COMPARISON_STYLES = {
   MISSING_EVIDENCE: 'review',
 } as const
 
+const RESOLUTION_LABELS = {
+  DIFFERENT_ROLE: 'Resolved: different purpose',
+  SAME_ENTITY: 'Resolved: same value',
+  UNRESOLVED: 'Needs review',
+} as const
+
 const FIELD_LABELS: Record<string, string> = {
   account: 'Account number',
   activity: 'Activity',
@@ -84,7 +90,7 @@ export function VerificationReport({ report, documents }: {
     </>}
 
     {report.findings.map((finding) => {
-      if (!finding.comparisons?.length && !finding.evidence.length) return null
+      if (!finding.comparisons?.length && !finding.evidence.length && !finding.resolutions?.length) return null
       return <details className="verification-evidence" key={finding.rule}>
         <summary>{CHECK_LABELS[finding.rule]} evidence</summary>
         {!!finding.comparisons?.length && <div className="table-scroll verification-table">
@@ -100,6 +106,17 @@ export function VerificationReport({ report, documents }: {
               <td><span className={`verification-result ${COMPARISON_STYLES[entry.status]}`}>
                 {COMPARISON_LABELS[entry.status]}
               </span></td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+        {!!finding.resolutions?.length && <div className="table-scroll verification-table">
+          <table>
+            <caption>Differences reviewed by the analysis agent</caption>
+            <thead><tr><th scope="col">Field</th><th scope="col">Outcome</th><th scope="col">Reason</th></tr></thead>
+            <tbody>{finding.resolutions.map((entry, index) => <tr key={`${entry.field}-${index}`}>
+              <th scope="row">{FIELD_LABELS[entry.field] ?? entry.field}</th>
+              <td>{RESOLUTION_LABELS[entry.verdict]}</td>
+              <td>{entry.reason}</td>
             </tr>)}</tbody>
           </table>
         </div>}

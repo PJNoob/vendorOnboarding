@@ -79,6 +79,39 @@ class Comparison(StrictModel):
     status: Literal['MATCH', 'MISMATCH', 'MISSING_EVIDENCE']
 
 
+Verdict = Literal['SAME_ENTITY', 'DIFFERENT_ROLE', 'UNRESOLVED']
+
+
+class Resolution(StrictModel):
+    field: FieldName
+    verdict: Verdict
+    reason: str = Field(min_length=1, max_length=600)
+    evidence: list[Evidence]
+
+
+class Candidate(StrictModel):
+    documentId: str
+    kind: Kind
+    page: int
+    value: str
+    quote: str
+
+
+class AgentRequest(StrictModel):
+    field: FieldName
+    candidates: list[Candidate]
+    observations: list[str]
+    canUseTools: bool
+
+
+class AgentDecision(StrictModel):
+    action: Literal['read_page', 'get_declared', 'resolve']
+    documentId: str | None = None
+    page: int | None = None
+    verdict: Verdict | None = None
+    reason: str | None = Field(default=None, max_length=600)
+
+
 class Finding(StrictModel):
     rule: Rule
     result: Literal['PASS', 'REVIEW']
@@ -86,11 +119,12 @@ class Finding(StrictModel):
     message: str
     evidence: list[Evidence]
     comparisons: list[Comparison] = Field(default_factory=list)
+    resolutions: list[Resolution] = Field(default_factory=list)
 
 
 class Report(StrictModel):
     submissionId: str
-    version: str = 'langgraph-gemini-v3'
+    version: str = 'langgraph-gemini-v4'
     recommendation: Literal['CONSISTENT', 'NEEDS_REVIEW']
     findings: list[Finding]
 

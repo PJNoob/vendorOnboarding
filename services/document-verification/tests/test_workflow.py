@@ -4,15 +4,24 @@ from fastapi.testclient import TestClient
 
 from vendor_verification.app import create_app
 from vendor_verification.graph import build_graph
-from vendor_verification.models import Extraction, VerificationRequest
+from vendor_verification.models import AgentDecision, Extraction, VerificationRequest
 
 TOKEN = 'test-token-' * 4
 
 
 class FakeProvider:
-    def __init__(self, fields=None, fail=False):
+    def __init__(self, fields=None, fail=False, decisions=None):
         self.fields = fields or {}
         self.fail = fail
+        self.decisions = decisions or {}
+        self.requests = []
+
+    async def decide(self, request):
+        self.requests.append(request)
+        queue = self.decisions.get(request.field)
+        if queue is None:
+            return AgentDecision(action='resolve', verdict='UNRESOLVED', reason='Cannot tell.')
+        return queue.pop(0) if len(queue) > 1 else queue[0]
 
     async def extract(self, document):
         if self.fail:
@@ -97,17 +106,93 @@ def test_identifier_formatting_is_normalized():
     assert run(payload).recommendation == 'CONSISTENT'
 
 
-def test_address_variations_require_review():
+def address_conflict(decisions, first='1 Main Street', second='1 Main St'):
+    payload = request()
+    payload['documents'][0]['pages'][0]['text'] += f' {first}'
+    payload['documents'][1]['pages'][0]['text'] += f' {second}'
+    source = provider()
+    source.decisions = decisions
+    source.fields['registration'].append(field('address', first))
+    source.fields['bank'].append(field('address', second))
+    return source, run(payload, source)
+
+
+def test_address_abbreviation_is_resolved_with_a_reason():
+    source, report = address_conflict({'address': [AgentDecision(
+        action='resolve', verdict='SAME_ENTITY', reason='"St" abbreviates "Street".')]})
+    finding = report.findings[0]
+    assert finding.result == 'PASS'
+    assert [r.verdict for r in finding.resolutions] == ['SAME_ENTITY']
+    assert '"St" abbreviates "Street".' in finding.message
+    assert report.recommendation == 'CONSISTENT'
+
+
+def test_office_and_site_addresses_are_resolved_as_different_roles():
+    source, report = address_conflict({'address': [AgentDecision(
+        action='resolve', verdict='DIFFERENT_ROLE', reason='Registered office vs industrial park site.')]},
+        'Registered office: House 27, Kabul', 'Site: Pul-e-Charkhi Industrial Park')
+    finding = report.findings[0]
+    assert finding.result == 'PASS' and finding.resolutions[0].verdict == 'DIFFERENT_ROLE'
+    assert {e.documentId for e in finding.resolutions[0].evidence} == {'registration', 'bank'}
+
+
+def test_unresolved_address_requires_review_and_names_the_values():
+    _, report = address_conflict({})
+    finding = report.findings[0]
+    assert finding.result == 'REVIEW'
+    assert finding.message == ('Conflicting address values: "1 Main Street" (Registration document, page 1) '
+                               'vs "1 Main St" (Bank letter, page 1). Cannot tell.')
+
+
+def test_agent_can_read_a_page_before_resolving():
+    source, report = address_conflict({'address': [
+        AgentDecision(action='read_page', documentId='bank', page=1),
+        AgentDecision(action='resolve', verdict='SAME_ENTITY', reason='Same street.')]})
+    assert report.findings[0].result == 'PASS'
+    assert source.requests[-1].observations == ['Page text of bank page 1:\nAcme 4567 1 Main St']
+
+
+def test_agent_that_never_resolves_hits_the_step_cap():
+    source, report = address_conflict({'address': [AgentDecision(action='get_declared')]})
+    assert report.findings[0].result == 'REVIEW'
+    assert len(source.requests) == 4
+
+
+def test_agent_failure_requires_review():
+    class Broken(FakeProvider):
+        async def decide(self, request):
+            raise TimeoutError('private supplier text')
+
     payload = request()
     payload['documents'][0]['pages'][0]['text'] += ' 1 Main Street'
     payload['documents'][1]['pages'][0]['text'] += ' 1 Main St'
-    source = provider()
+    source = Broken(provider().fields)
     source.fields['registration'].append(field('address', '1 Main Street'))
     source.fields['bank'].append(field('address', '1 Main St'))
     finding = run(payload, source).findings[0]
+    assert finding.result == 'REVIEW' and 'private supplier text' not in finding.message
+
+
+def test_identifier_formatting_difference_can_be_resolved():
+    payload = request()
+    payload['documents'][1]['pages'][0]['text'] += ' ab 123'
+    source = provider()
+    source.decisions = {'registry_id': [AgentDecision(action='resolve', verdict='SAME_ENTITY', reason='Spacing only.')]}
+    source.fields['bank'].append(field('registry_id', 'ab 123'))
+    # Normalization already treats spacing as equal, so no conflict reaches the agent.
+    assert run(payload, source).recommendation == 'CONSISTENT'
+    assert source.requests == []
+
+
+def test_agent_cannot_clear_different_identifiers():
+    payload = request()
+    payload['documents'][0]['pages'][0]['text'] += ' 99998888'
+    source = provider()
+    source.decisions = {'account': [AgentDecision(action='resolve', verdict='SAME_ENTITY', reason='Looks alike.')]}
+    source.fields['registration'].append(field('account', '99998888'))
+    finding = run(payload, source).findings[1]
     assert finding.result == 'REVIEW'
-    assert finding.message == ('Conflicting address values: "1 Main Street" (Registration document, page 1) '
-                               'vs "1 Main St" (Bank letter, page 1).')
+    assert '9999' not in finding.message
 
 
 def test_conflicting_account_numbers_are_masked():
