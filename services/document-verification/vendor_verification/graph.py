@@ -46,10 +46,22 @@ def compact(value: str) -> str:
     return ''.join(c for c in unicodedata.normalize('NFKC', value).casefold() if c.isalnum())
 
 
+# Legal-form words that suppliers and banks abbreviate differently ("Acme Limited" vs "ACME LTD").
+LEGAL_FORMS = [
+    (r'\blimited\b', 'ltd'), (r'\bincorporated\b', 'inc'), (r'\bcorporation\b', 'corp'),
+    (r'\bcompany\b', 'co'), (r'\bprivate\b', 'pvt'), (r'\bl\.\s?l\.\s?c\.?', 'llc'), (r'&', 'and'),
+]
+
+
 def normalized(field: str, value: str) -> str:
     # Identifier punctuation is significant, except whitespace and common separators.
     if field in {'account', 'registry_id', 'tax_id', 'vat_id'}:
         return re.sub(r'[\s-]', '', value).upper()
+    if field == 'legal_name':
+        text = unicodedata.normalize('NFKC', value).casefold()
+        for pattern, replacement in LEGAL_FORMS:
+            text = re.sub(pattern, replacement, text)
+        return compact(text)
     return compact(value)
 
 

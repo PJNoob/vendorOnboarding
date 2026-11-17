@@ -205,3 +205,10 @@ def test_certificate_model_route_requires_auth_and_redacts_failures():
         assert failure.status_code == 503
         assert 'private certificate' not in failure.text
         assert source.generate_certificate_evidence.await_count == 2
+
+
+def test_legal_name_normalization_accepts_legal_form_spellings():
+    from vendor_verification.graph import normalized
+    assert normalized('legal_name', 'Cedar Meridian QA Calibration Limited') == normalized('legal_name', 'CEDAR MERIDIAN QA CALIBRATION LTD.')
+    assert normalized('legal_name', 'Smith & Sons L.L.C.') == normalized('legal_name', 'Smith and Sons LLC')
+    assert normalized('legal_name', 'Acme Ltd') != normalized('legal_name', 'Acme Holdings Ltd')

@@ -29,6 +29,11 @@ const RULES: Record<string, { title: string; document: string; guidance: string 
     document: 'OWNERSHIP',
     guidance: 'Check that the declaration identifies the supplier by its registration ID and that the ownership links total 100% at each level.',
   },
+  DOCUMENT_TYPE: {
+    title: 'Wrong document type',
+    document: '',
+    guidance: 'Open the cited file and confirm whether it is the kind of document it was uploaded as. If not, request the correct document from the supplier.',
+  },
   TAX_PROFILE: {
     title: 'Tax registration',
     document: 'TAX',
@@ -44,6 +49,8 @@ const RULE_BY_ISSUE_CODE: Record<string, string> = {
   OWNERSHIP_POSSIBLE_MATCH: 'OWNERSHIP_SCREENING',
   OWNERSHIP_BLOCKED_CHAIN: 'OWNERSHIP_SCREENING',
   TAX_MISMATCH: 'TAX_PROFILE',
+  TAX_FORMAT_INVALID: 'TAX_PROFILE',
+  DOCUMENT_TYPE_MISMATCH: 'DOCUMENT_TYPE',
 }
 
 const HOLD_REASONS: Record<string, string> = {

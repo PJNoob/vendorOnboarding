@@ -103,11 +103,25 @@ export class ReviewService {
       await OnboardingCaseRepository.updateMany({
         data: { revision: { increment: 1 }, status }, where: { id: row.id, tenantId: actor.tenantId },
       }, tx)
-      await ReviewService.notify(actor, row.id, snapshot.id, decision.id,
-        input.outcome === 'APPROVE' ? 'Your onboarding was approved.' : 'Your onboarding was declined. Contact procurement for next steps.', tx)
+      await ReviewService.notify(actor, row.id, snapshot.id, decision.id, ReviewService.decisionText(input.outcome, input.rationale), tx)
       await Commands.audit(actor, status, row.id, tx, { decisionId: decision.id, submissionId: snapshot.id })
       return { id: decision.id, revision: row.revision + 1 }
     })
+  }
+
+  /** Supplier email body for a correction request that names each item the supplier must fix. */
+  static correctionText(items: string[]) {
+    const needed = [...new Set(items.map((item) => item.trim()).filter(Boolean))]
+    if (!needed.length) return 'A correction is requested. Sign in to see the requested action.'
+    return ['A correction is requested on your supplier application.', '', 'What we need from you:',
+      ...needed.map((item) => `- ${item}`), '', 'Sign in to update your application and resubmit it for review.'].join('\n')
+  }
+
+  /** Supplier email body for a final decision. A rejection always carries the recorded reason. */
+  static decisionText(outcome: 'APPROVE' | 'REJECT', rationale: string) {
+    if (outcome === 'APPROVE') return 'Your onboarding was approved.'
+    return ['Your onboarding was declined.', '', `Reason: ${rationale.trim()}`, '',
+      'Contact procurement if you believe this is incorrect or want to reapply.'].join('\n')
   }
 
   static async notify(actor: Actor, caseId: string, submissionId: string, key: string, text: string, tx: TransactionClient) {
@@ -130,7 +144,7 @@ export class ReviewService {
         outcome: 'REQUEST_CHANGES', rationale: input.message, reviewerId: actor.id, submissionId: snapshot.id, tenantId: actor.tenantId,
       } }, tx)
       await ReviewService.touch(actor, row.id, tx)
-      await ReviewService.notify(actor, row.id, snapshot.id, issue.id, 'A correction is requested. Sign in to see the requested action.', tx)
+      await ReviewService.notify(actor, row.id, snapshot.id, issue.id, ReviewService.correctionText([input.message]), tx)
       await Commands.audit(actor, 'CORRECTION_REQUESTED', row.id, tx, { issueId: issue.id })
       return { id: issue.id, revision: row.revision + 1 }
     })

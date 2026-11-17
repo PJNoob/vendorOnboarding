@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+export { TaxIds, type TaxIdKind, type TaxIdResult } from './TaxIds'
+
 export class Values {
   static readonly ACTIVITIES = ['CALIBRATION'] as const
   static readonly BUYER_ROLES = ['ADMIN', 'AUDITOR', 'BUYER', 'COMPLIANCE', 'REVIEWER'] as const
@@ -54,7 +56,7 @@ export const profiles = {
     formType: z.enum(Values.TAX_FORMS),
     taxId: z.string().regex(/^[A-Z0-9-]{4,40}$/i).optional(), // Foreign tax review may allow omission.
     vatRegistered: z.boolean(),
-    vatTrn: z.string().regex(/^\d{15}$/).optional(), // Required only when registered in UAE.
+    vatTrn: z.string().regex(/^[A-Z0-9 .-]{4,40}$/i).optional(), // Country format is checked against the case country (TaxIds).
   }),
 }
 
@@ -141,8 +143,9 @@ export const verificationReport = z.strictObject({
 export const outputs = {
   ack: z.strictObject({ id, revision: z.int() }),
   analytics: z.strictObject({
+    cohort: z.int(), // Applications created in the range that were submitted at least once.
     completed: z.int(), counts: z.record(z.string(), z.int()), medianHours: z.number(), reworkRate: z.number(),
-    reviewerAction: z.int(), supplierAction: z.int(),
+    reviewerAction: z.int(), reworked: z.int(), supplierAction: z.int(),
   }),
   audit: z.strictObject({
     items: z.array(z.strictObject({ action: text, actorId: z.string(), at: date, id, requestId: id })),

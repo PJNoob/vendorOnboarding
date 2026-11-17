@@ -327,9 +327,9 @@ export class Worker {
       await OnboardingCaseRepository.updateMany({
         data: { revision: { increment: 1 }, status: 'PENDING' }, where: { id: latest.id, tenantId: work.tenantId },
       }, tx)
-      const correction = findings.some((finding) => finding.message)
+      const corrections = findings.filter((finding) => finding.result !== 'PASS' && finding.message).map((finding) => finding.message)
       await ReviewService.notify(actor, latest.id, submission.id, `checks-${work.id}-${work.leaseEpoch}`,
-        correction ? 'A correction is requested. Sign in to see the requested action.' : 'Your submission is awaiting review.', tx)
+        corrections.length ? ReviewService.correctionText(corrections) : 'Your submission is awaiting review.', tx)
       await Commands.audit(actor, 'VERIFICATION_COMPLETED', latest.id, tx)
     })
   }
