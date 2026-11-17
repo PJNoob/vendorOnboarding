@@ -63,6 +63,9 @@ class GoogleProviders:
                     'vat_id for VAT identifier. For country, return the ISO 3166-1 alpha-2 code (for example '
                     'US, AE, IN, GB) of the country where the vendor is registered or incorporated, only when '
                     'the page prints that country or one of its states, provinces or emirates; quote that text. '
+                    'Use site for the laboratory or service location (city, address or facility) the certificate covers, '
+                    'activity for the accredited service or scope description, '
+                    'standard for the accreditation standard such as ISO/IEC 17025. '
                     'Preserve source date strings in expires_on; use ISO '
                     'only if it is printed that way. Never extract the bank name or owners as the vendor.'),
                 temperature=0,

@@ -66,6 +66,31 @@ def normalized(field: str, value: str) -> str:
     return compact(value)
 
 
+# Declared scope values are short labels ("CALIBRATION", "Kabul") while certificates describe them in
+# prose ("Industrial metrology and calibration services"), so they match by token containment.
+ACTIVITY_SYNONYMS = {'calibration': {'calibration', 'calibrations', 'calibrate', 'calibrating', 'metrology'}}
+SCOPE_STOPWORDS = {'a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'the', 'to'}
+
+
+def tokens(value: str) -> set[str]:
+    words = re.findall(r'[^\W_]+', unicodedata.normalize('NFKC', value).casefold())
+    return {word for word in words if word not in SCOPE_STOPWORDS}
+
+
+def matches(field: str, declared: str, observed: str) -> bool:
+    if normalized(field, declared) == normalized(field, observed):
+        return True
+    if field not in {'site', 'activity'}:
+        return False
+    wanted, found = tokens(declared), tokens(observed)
+    if not wanted:
+        return False
+    if field == 'activity' and len(wanted) == 1:
+        wanted = ACTIVITY_SYNONYMS.get(next(iter(wanted)), wanted)
+        return bool(wanted & found)
+    return wanted <= found
+
+
 # The registration country is checked only on registration evidence; a bank letter
 # or tax form can legitimately name another country (the bank's, the tax office's).
 COUNTRY_KINDS = {'REGISTRATION'}
@@ -131,8 +156,7 @@ def build_graph(extractor: Extractor):
             comparisons: list[Comparison] = []
             for expected in [e for e in request.expected if e.rule == rule]:
                 candidates = [e for e in relevant if e.field == expected.field and by_id[e.documentId].kind == expected.kind]
-                declared = normalized(expected.field, expected.value)
-                matched = any(normalized(e.field, e.value) == declared for e in candidates)
+                matched = any(matches(e.field, expected.value, e.value) for e in candidates)
                 # Many registration certificates do not print a country. Only a country that is
                 # printed and differs from the declared one needs review.
                 if not matched and expected.field == 'country' and candidates:

@@ -23,6 +23,8 @@ const countryCode = z.string().regex(/^[A-Z]{2}$/)
 const id = z.string().min(1).max(128)
 const message = z.string().trim().min(10).max(1000)
 const text = z.string().trim().min(1).max(Values.MAX_TEXT)
+// Declared sites are compared with certificate text, so reject values that cannot name a place.
+const site = text.min(3, { error: 'Enter the service site name' }).regex(/\p{L}/u, { error: 'Enter the service site name' })
 const date = z.iso.datetime()
 const command = z.strictObject({ idempotencyKey: z.uuid() })
 const caseRef = z.strictObject({ caseId: id })
@@ -53,7 +55,7 @@ export const profiles = {
       registryId: text.optional(), // Individuals may lack a registry identifier.
     })).min(1).max(100),
   }),
-  qualifications: z.array(z.strictObject({ activity: text, site: text, standard: text })).min(1).max(20),
+  qualifications: z.array(z.strictObject({ activity: text, site, standard: text })).min(1).max(20),
   tax: z.strictObject({
     formType: z.enum(Values.TAX_FORMS),
     taxId: z.string().regex(/^[A-Z0-9-]{4,40}$/i).optional(), // Foreign tax review may allow omission.
@@ -77,10 +79,10 @@ export const inputs = {
   case: caseRef,
   create: command.extend({
     category: z.enum(Values.ACTIVITIES), country: countryCode,
-    requestedSite: text, supplierEmail: z.email({ error: 'Enter a valid mail' }),
+    requestedSite: site, supplierEmail: z.email({ error: 'Enter a valid mail' }),
   }),
   createSupplierApplication: command.extend({
-    category: z.enum(Values.ACTIVITIES), country: countryCode, requestedSite: text,
+    category: z.enum(Values.ACTIVITIES), country: countryCode, requestedSite: site,
   }),
   decide: change.extend({ outcome: z.enum(Values.DECISIONS), rationale: message, submissionId: id }),
   document: draft.extend({ documentId: id }),

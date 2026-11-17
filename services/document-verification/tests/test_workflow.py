@@ -222,6 +222,39 @@ def test_legal_name_normalization_accepts_legal_form_spellings():
     assert normalized('legal_name', 'Acme Ltd') != normalized('legal_name', 'Acme Holdings Ltd')
 
 
+def scope_report(site_text, activity_text, declared_site='Kabul', declared_activity='CALIBRATION'):
+    payload = {
+        'submissionId': 'submission', 'requiredKinds': ['CERTIFICATE'], 'rules': ['CERTIFICATE_SCOPE'],
+        'expected': [
+            {'field': 'site', 'value': declared_site, 'rule': 'CERTIFICATE_SCOPE', 'kind': 'CERTIFICATE'},
+            {'field': 'activity', 'value': declared_activity, 'rule': 'CERTIFICATE_SCOPE', 'kind': 'CERTIFICATE'},
+        ],
+        'documents': [{'documentId': 'cert', 'kind': 'CERTIFICATE', 'pages': [{
+            'documentId': 'cert', 'page': 1, 'text': ' '.join(filter(None, [site_text, activity_text]))}]}],
+    }
+    fields = [field(name, text) for name, text in (('site', site_text), ('activity', activity_text)) if text]
+    finding = run(payload, FakeProvider({'cert': fields})).findings[0]
+    return {c.field: c.status for c in finding.comparisons}
+
+
+def test_scope_matches_prose_descriptions_of_declared_values():
+    statuses = scope_report('Kabul, Afghanistan', 'Industrial metrology and calibration services')
+    assert statuses == {'site': 'MATCH', 'activity': 'MATCH'}
+
+
+def test_scope_still_reports_unrelated_values_and_missing_evidence():
+    assert scope_report('Kandahar', 'Catering and cleaning services') == {'site': 'MISMATCH', 'activity': 'MISMATCH'}
+    assert scope_report('', 'Calibration laboratory') == {'site': 'MISSING_EVIDENCE', 'activity': 'MATCH'}
+
+
+def test_scope_containment_does_not_apply_to_identifiers():
+    from vendor_verification.graph import matches
+    assert not matches('account', '4567', '1234567')
+    assert not matches('tax_id', 'AB1', 'AB12')
+    assert not matches('site', 'apply', 'Kabul, Afghanistan')
+    assert matches('site', 'Kabul laboratory', 'Kabul Afghanistan laboratory')
+
+
 def country_request(declared='US'):
     payload = request()
     payload['expected'].append({'field': 'country', 'value': declared, 'rule': 'ENTITY_CONSISTENCY', 'kind': 'REGISTRATION'})
