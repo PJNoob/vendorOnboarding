@@ -28,7 +28,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(secret_values({'data': {'KEY': base64.b64encode(b'value').decode()}}), {'KEY': 'value'})
         with patch.dict(os.environ, {'PROJECT_ID': 'vendor-project'}):
             values = {key: 'value' for key in ['DATABASE_URL', 'REDIS_URL', 'APP_URL', 'BETTER_AUTH_SECRET', 'PII_KEY',
-                'DOCUMENT_AI_LOCATION', 'DOCUMENT_AI_PROCESSOR_ID', 'GEMINI_MODEL']}
+                'GEMINI_MODEL']}
             values.update(DOCUMENT_SERVICE_TOKEN='x' * 32, GOOGLE_CLOUD_PROJECT='vendor-project')
             validate_secret(values)
             values['DOCUMENT_SERVICE_URL'] = 'https://external.example'

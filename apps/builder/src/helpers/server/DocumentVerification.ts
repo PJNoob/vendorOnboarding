@@ -49,6 +49,8 @@ export class DocumentVerification {
     }
     add('legal_name', snapshot.companyProfile?.legalName, 'ENTITY_CONSISTENCY', 'REGISTRATION')
     add('registry_id', snapshot.companyProfile?.registryId, 'ENTITY_CONSISTENCY', 'REGISTRATION')
+    // ISO alpha-2 code; the service compares it with the country printed on the registration document.
+    add('country', snapshot.companyProfile?.country ?? row.country, 'ENTITY_CONSISTENCY', 'REGISTRATION')
     add('legal_name', snapshot.bankProfile?.beneficiary, 'BANK_BENEFICIARY', 'BANK')
     if (snapshot.bankProfile) add('account', Secrets.decrypt(snapshot.bankProfile.accountCiphertext, row.tenantId), 'BANK_BENEFICIARY', 'BANK')
     if (snapshot.taxProfile?.taxIdCiphertext) add('tax_id', Secrets.decrypt(snapshot.taxProfile.taxIdCiphertext, row.tenantId), 'TAX_PROFILE', 'TAX')

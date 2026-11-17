@@ -1,11 +1,12 @@
 import asyncio
 import io
+import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
-from google.cloud import documentai_v1 as documentai
+import pytest
 from google.genai import types
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfWriter
 
 from vendor_verification.models import Extraction
 from vendor_verification.providers import GoogleProviders
@@ -22,29 +23,66 @@ def pdf(pages, encrypted=False):
     return output.getvalue()
 
 
-def test_ocr_preserves_page_numbers_across_batches():
-    async def process(*, request, **_kwargs):
-        count = len(PdfReader(io.BytesIO(request.raw_document.content)).pages)
-        return SimpleNamespace(document=documentai.Document(text='Acme', pages=[documentai.Document.Page(
-            layout=documentai.Document.Page.Layout(text_anchor=documentai.Document.TextAnchor(
-                text_segments=[documentai.Document.TextAnchor.TextSegment(start_index=0, end_index=4)]))) for _ in range(count)]))
+def ocr_provider(generate):
     provider = GoogleProviders.__new__(GoogleProviders)
-    provider.project = 'project'
-    provider.location = 'us'
-    provider.processor = 'processor'
-    provider.ocr = SimpleNamespace(processor_path=lambda *_args: 'processor', process_document=AsyncMock(side_effect=process))
-    pages = asyncio.run(provider.pages('document', pdf(16)))
-    assert [page.page for page in pages] == list(range(1, 17))
-    assert all(page.text == 'Acme' for page in pages)
-    assert provider.ocr.process_document.await_count == 2
+    provider.model = 'gemini-3.8-flash'
+    provider.gemini = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
+    provider.render_page = Mock(side_effect=lambda _pdf, page: str(page).encode())
+    return provider
+
+
+def ocr_response(text, reason=types.FinishReason.STOP):
+    return SimpleNamespace(candidates=[SimpleNamespace(finish_reason=reason)], text=text)
+
+
+def test_ocr_preserves_page_numbers_when_gemini_responses_finish_out_of_order():
+    async def generate(*, model, contents, config):
+        assert model == 'gemini-3.8-flash'
+        assert config.response_schema.type == types.Type.STRING
+        part = contents.parts[0].inline_data
+        assert part.mime_type == 'image/png'
+        page = int(part.data)
+        if page == 1:
+            await second_page_finished.wait()
+        elif page == 2:
+            second_page_finished.set()
+        return ocr_response(json.dumps(f'Page {page}'))
+
+    async def extract():
+        nonlocal second_page_finished
+        second_page_finished = asyncio.Event()
+        return await provider.pages('document', pdf(50))
+
+    second_page_finished = None
+    provider = ocr_provider(AsyncMock(side_effect=generate))
+    pages = asyncio.run(extract())
+    assert [(page.documentId, page.page, page.text) for page in pages] == [
+        ('document', index, f'Page {index}') for index in range(1, 51)]
 
 
 def test_unsupported_pdfs_do_not_call_ocr():
-    provider = GoogleProviders.__new__(GoogleProviders)
-    provider.ocr = SimpleNamespace(process_document=AsyncMock())
+    generate = AsyncMock()
+    provider = ocr_provider(generate)
     assert asyncio.run(provider.pages('document', pdf(51))) == []
     assert asyncio.run(provider.pages('document', pdf(1, encrypted=True))) == []
-    provider.ocr.process_document.assert_not_called()
+    provider.render_page.assert_not_called()
+    generate.assert_not_called()
+
+
+@pytest.mark.parametrize('response', [
+    ocr_response(json.dumps('A' * 10001)),
+    ocr_response('"partial', types.FinishReason.MAX_TOKENS),
+])
+def test_oversized_or_truncated_transcripts_are_unreadable(response):
+    provider = ocr_provider(AsyncMock(return_value=response))
+    assert asyncio.run(provider.transcribe_page(b'png')) == ''
+
+
+def test_blocked_ocr_fails_instead_of_returning_an_empty_transcript():
+    response = ocr_response(None, types.FinishReason.SAFETY)
+    provider = ocr_provider(AsyncMock(return_value=response))
+    with pytest.raises(RuntimeError, match='did not complete'):
+        asyncio.run(provider.transcribe_page(b'png'))
 
 
 def test_gemini_accepts_typed_extraction_schema():
@@ -53,8 +91,6 @@ def test_gemini_accepts_typed_extraction_schema():
 
 
 def test_generation_schema_keeps_types_and_runtime_validation_stays_strict():
-    import json
-    import pytest
     from pydantic import ValidationError
     schema = GoogleProviders.response_schema()
     types.GenerateContentConfig(response_mime_type='application/json', response_schema=schema)

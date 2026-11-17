@@ -5,9 +5,11 @@ import { CheckEvidenceRepository, CheckRunRepository, DocumentRepository, Extrac
 import { Commands } from './Commands'
 import { DocumentProcessor } from './DocumentProcessor'
 import { DocumentVerification } from './DocumentVerification'
+import { ObjectStore } from './Providers'
 import { Worker } from './JobWorker'
 import { ReviewEvidence } from './ReviewEvidence'
 import { ReviewService } from './ReviewService'
+import { Secrets } from './Security'
 import { Verification } from './Verification'
 
 afterEach(() => mock.restoreAll())
@@ -65,6 +67,23 @@ test('verification cannot omit a missing current extraction', async () => {
   const worker = instance()
   mock.method(ExtractionRepository, 'findFirst', async () => null)
   await assert.rejects(worker['evidence'](snapshot() as never), /current document extraction is unavailable/)
+})
+
+for (const currentAvailable of [true, false]) test(`verification reads ${currentAvailable ? 'Gemini' : 'legacy'} OCR evidence`, async () => {
+  const expectedVersion = currentAvailable ? DocumentProcessor.VERSION : DocumentProcessor.LEGACY_VERSION
+  const find = mock.method(ExtractionRepository, 'findFirst', async (query: Parameters<typeof ExtractionRepository.findFirst>[0]) => (
+    query.where?.extractorVersion === expectedVersion ? { outputRef: expectedVersion } as never : null
+  ))
+  const evidence = { documentId: document.id, page: 1, text: 'ACME' }
+  const file = mock.fn(() => ({
+    download: async () => [Secrets.encrypt(JSON.stringify([evidence]), document.tenantId)],
+  }))
+  mock.method(ObjectStore.STORAGE, 'bucket', () => ({ file }) as never)
+
+  assert.deepEqual(await instance()['evidence'](snapshot() as never), new Map([['BANK', [evidence]]]))
+  assert.deepEqual(find.mock.calls.map(({ arguments: [query] }) => query.where?.extractorVersion),
+    currentAvailable ? [DocumentProcessor.VERSION] : [DocumentProcessor.VERSION, DocumentProcessor.LEGACY_VERSION])
+  assert.deepEqual(file.mock.calls[0].arguments, [expectedVersion])
 })
 
 test('an old submission cannot write verification results', async () => {

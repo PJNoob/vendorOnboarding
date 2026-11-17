@@ -30,6 +30,7 @@ FIELD_RULES = {
     'legal_name': {'BANK_BENEFICIARY', 'ENTITY_CONSISTENCY', 'TAX_PROFILE'},
     'registry_id': {'ENTITY_CONSISTENCY'},
     'address': {'ENTITY_CONSISTENCY'},
+    'country': {'ENTITY_CONSISTENCY'},
     'account': {'BANK_BENEFICIARY'},
     'tax_id': {'TAX_PROFILE'},
     'vat_id': {'TAX_PROFILE'},
@@ -55,7 +56,7 @@ LEGAL_FORMS = [
 
 def normalized(field: str, value: str) -> str:
     # Identifier punctuation is significant, except whitespace and common separators.
-    if field in {'account', 'registry_id', 'tax_id', 'vat_id'}:
+    if field in {'account', 'country', 'registry_id', 'tax_id', 'vat_id'}:
         return re.sub(r'[\s-]', '', value).upper()
     if field == 'legal_name':
         text = unicodedata.normalize('NFKC', value).casefold()
@@ -90,10 +91,21 @@ def matches(field: str, declared: str, observed: str) -> bool:
     return wanted <= found
 
 
+# The registration country is checked only on registration evidence; a bank letter
+# or tax form can legitimately name another country (the bank's, the tax office's).
+COUNTRY_KINDS = {'REGISTRATION'}
+
+
 def supported(document: Document, field) -> bool:
     page = next((p for p in document.pages if p.page == field.page), None)
-    return bool(page and field.quote in page.text and compact(field.value)
-                and compact(field.value) in compact(field.quote))
+    if not page or field.quote not in page.text:
+        return False
+    if field.field == 'country':
+        # The model returns an ISO 3166-1 alpha-2 code for a country, state or emirate
+        # printed in the quote ("Delaware" -> US, "Dubai" -> AE), so the code itself is not
+        # in the quote. The verbatim quote keeps the reviewer able to check the mapping.
+        return bool(re.fullmatch(r'[A-Z]{2}', field.value))
+    return bool(compact(field.value) and compact(field.value) in compact(field.quote))
 
 
 def build_graph(extractor: Extractor):
@@ -114,7 +126,9 @@ def build_graph(extractor: Extractor):
         unresolved: set[str] = set()
         for document, extracted in zip(request.documents, state['extracted'], strict=True):
             for field in extracted.fields:
-                if not supported(document, field) or field.confidence < 0.85:
+                if field.field == 'country' and document.kind not in COUNTRY_KINDS:
+                    continue
+                if not supported(document, field) or field.confidence < 0.5:
                     unresolved.update(FIELD_RULES[field.field])
                     continue
                 # Ownership declarations list other entities: do not compare their names
@@ -143,7 +157,13 @@ def build_graph(extractor: Extractor):
             for expected in [e for e in request.expected if e.rule == rule]:
                 candidates = [e for e in relevant if e.field == expected.field and by_id[e.documentId].kind == expected.kind]
                 matched = any(matches(e.field, expected.value, e.value) for e in candidates)
-                if not matched:
+                # Many registration certificates do not print a country. Only a country that is
+                # printed and differs from the declared one needs review.
+                if not matched and expected.field == 'country' and candidates:
+                    shown = ', '.join(dict.fromkeys(e.value for e in candidates))
+                    reasons.append(f'The registration document shows the company is registered in {shown}, '
+                                   f'but the application declares {expected.value}.')
+                elif not matched and expected.field != 'country':
                     reasons.append(f'The declared {expected.field} needs verification against {expected.kind} evidence.')
                 status = 'MATCH' if matched else 'MISMATCH' if candidates else 'MISSING_EVIDENCE'
                 comparisons.append(Comparison(field=expected.field, kind=expected.kind, declared=expected.value,
