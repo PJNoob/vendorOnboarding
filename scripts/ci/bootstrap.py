@@ -69,6 +69,9 @@ def identities():
                 {'apiGroups': [''], 'resources': ['pods/exec'], 'verbs': ['get', 'create']},
                 {'apiGroups': ['batch'], 'resources': ['jobs'], 'verbs': ['get', 'list', 'watch', 'create', 'delete']},
                 {'apiGroups': ['coordination.k8s.io'], 'resources': ['leases'], 'verbs': ['get', 'create', 'update', 'patch']},
+                {'apiGroups': ['networking.k8s.io'], 'resources': ['ingresses'], 'verbs': ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']},
+                {'apiGroups': ['networking.gke.io'], 'resources': ['managedcertificates', 'frontendconfigs'], 'verbs': ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']},
+                {'apiGroups': ['cloud.google.com'], 'resources': ['backendconfigs'], 'verbs': ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']},
             ]}
     binding = {'apiVersion': 'rbac.authorization.k8s.io/v1', 'kind': 'RoleBinding',
                'metadata': {'name': 'vendor-deployer', 'namespace': NAMESPACE},
