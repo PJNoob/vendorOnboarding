@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { actor } = await ContextFactory.create({ req, acceptEnrollment: false })
     if (!actor) {
-      res.status(401).json({ error: 'An authenticated reviewer session is required' })
+      res.status(401).json({ error: 'An authenticated workspace session is required' })
       return
     }
     await Security.buyer(actor, ReviewEvidence.ROLES)
@@ -42,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return
     }
     if (error instanceof TRPCError && error.code === 'FORBIDDEN') {
-      res.status(403).json({ error: 'Reviewer or compliance workspace membership is required' })
+      res.status(403).json({ error: 'Admin, Reviewer, or Compliance workspace membership is required' })
       return
     }
     res.status(500).json({ error: 'Reviewer endpoint is unavailable' })

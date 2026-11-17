@@ -208,8 +208,14 @@ export class DraftService {
   static submit(actor: Actor, input: Input<'submit'>) {
     return DraftService.mutate(actor, input, 'supplier.submit', async (scoped, tx) => {
       const { policy, row, snapshot } = await DraftService.draft(scoped, input, tx)
-      Commands.require(snapshot.companyProfile && snapshot.bankProfile && snapshot.taxProfile &&
-        snapshot.qualification_submission.length && snapshot.ownershipEntity_submission.length, 'complete all supplier sections')
+      const missing = [
+        !snapshot.companyProfile && 'Company',
+        !snapshot.bankProfile && 'Banking',
+        !snapshot.taxProfile && 'Tax',
+        !snapshot.qualification_submission.length && 'Qualifications',
+        !snapshot.ownershipEntity_submission.length && 'Ownership',
+      ].filter(Boolean)
+      Commands.require(!missing.length, 'Save the required sections before submitting: ' + missing.join(', '))
       Commands.require(policy.documents.every((kind) => snapshot.document_submission.some((doc) => doc.kind === kind && doc.status === 'CLEAN')),
         'upload clean evidence for each required document kind')
       const now = new Date()
