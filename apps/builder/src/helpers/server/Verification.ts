@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { env } from '@neo/env'
 import { Prisma, type CheckResult, type DocumentKind, type SourceMode } from '@neo/prisma'
+import { TaxIds } from '@neo/schemas'
 
 import { Commands } from './Commands'
 import { screenOfac } from './OfacScreening'
@@ -30,13 +31,75 @@ export class Verification {
   static readonly DATASET = 'training-fixture-v1'
   static readonly TIMEOUT_MS = 15_000
 
+  // Legal-form words that suppliers and banks abbreviate differently ("Acme Limited" vs "ACME LTD").
+  private static readonly LEGAL_FORMS: [RegExp, string][] = [
+    [/\blimited\b/g, 'ltd'], [/\bincorporated\b/g, 'inc'], [/\bcorporation\b/g, 'corp'],
+    [/\bcompany\b/g, 'co'], [/\bprivate\b/g, 'pvt'], [/\bl\.\s?l\.\s?c\.?/g, 'llc'], [/&/g, 'and'],
+  ]
+
+  // Words that a document of each kind is expected to contain. A file with readable text but none of
+  // these is probably the wrong document (for example an ISO certificate uploaded as bank evidence).
+  static readonly DOCUMENT_SIGNALS: Record<DocumentKind, { pattern: RegExp; expected: string; noun: string }> = {
+    BANK: { expected: 'a bank letter or statement showing the account holder and account number', noun: 'bank evidence',
+      pattern: /\b(bank|banking|iban|swift|bic|account\s+(number|no|holder|name)|routing|sort\s+code|beneficiary|ifsc)\b/i },
+    CERTIFICATE: { expected: 'the accreditation certificate and its scope annex', noun: 'a quality certificate',
+      pattern: /\b(iso|iec|accredit\w*|certificat\w*|scope|calibration)\b/i },
+    OWNERSHIP: { expected: 'an ownership declaration listing each owner and percentage', noun: 'an ownership declaration',
+      pattern: /\b(owner\w*|shareholder\w*|shareholding|beneficial|equity|parent|subsidiar\w*)\b|%|\bper\s?cent\b/i },
+    REGISTRATION: { expected: 'the company registration or incorporation certificate', noun: 'a company registration document',
+      pattern: /\b(registration|registered|registry|register|incorporat\w*|company\s+(number|no)|trade\s+licen[cs]e|articles\s+of|formation)\b/i },
+    TAX: { expected: 'the tax registration certificate or tax form (for example a W-9 or VAT certificate)', noun: 'a tax document',
+      pattern: /\b(tax\w*|w-?9|w-?8\w*|vat|trn|gstin?|ein|pan|tin|irs|revenue)\b/i },
+  }
+
   private static compact(value: string) {
-    return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+    let text = value.toLowerCase()
+    for (const [pattern, replacement] of Verification.LEGAL_FORMS) text = text.replace(pattern, replacement)
+    return text.replace(/[^a-z0-9]/g, '')
   }
 
   private static has(value: string, evidence: Evidence[]) {
     const key = Verification.compact(value)
     return Boolean(key) && evidence.some((item) => Verification.compact(item.text).includes(key))
+  }
+
+  /** True when two legal names are the same entity name once punctuation, case and legal-form spelling are ignored. */
+  static sameName(left: string, right: string) {
+    return Verification.compact(left) === Verification.compact(right)
+  }
+
+  /** Flags uploaded documents whose readable text does not look like the kind they were uploaded as. */
+  static documentTypes(documents: Map<DocumentKind, Evidence[]>): Finding {
+    const mismatched: { kind: DocumentKind; pages: Evidence[] }[] = []
+    for (const [kind, pages] of documents) {
+      const signal = Verification.DOCUMENT_SIGNALS[kind]
+      if (!signal) continue
+      const byDocument = new Map<string, Evidence[]>()
+      for (const page of pages) byDocument.set(page.documentId, [...byDocument.get(page.documentId) ?? [], page])
+      for (const documentPages of byDocument.values()) {
+        const text = documentPages.map((page) => page.text).join('\n')
+        if (text.trim().length >= 40 && !signal.pattern.test(text)) mismatched.push({ kind, pages: documentPages })
+      }
+    }
+    const message = mismatched.map(({ kind }) => {
+      const signal = Verification.DOCUMENT_SIGNALS[kind]
+      return `The file uploaded as ${kind.toLowerCase()} evidence does not look like ${signal.noun}. Upload ${signal.expected}.`
+    }).join(' ')
+    return {
+      code: mismatched.length ? 'DOCUMENT_TYPE_MISMATCH' : 'MATCHED', evidence: mismatched.flatMap(({ pages }) => pages),
+      message, result: mismatched.length ? 'FAIL' : 'PASS', rule: 'DOCUMENT_TYPE', source: 'MANUAL',
+    }
+  }
+
+  /** Tax rule outcome: well-formed identifiers for the country that also appear in the tax evidence. */
+  static tax(country: string, profile: { formType: string; vatRegistered: boolean }, taxId: string, vat: string, tax: Evidence[]) {
+    const problem = TaxIds.problem(country, { taxId, vatRegistered: profile.vatRegistered, vatTrn: vat })
+    if (problem) return { code: 'TAX_FORMAT_INVALID', message: problem, ok: false }
+    const ok = country === 'US'
+      ? profile.formType === 'W9' && Boolean(taxId) && Verification.has(taxId, tax)
+      : profile.formType === 'OTHER_REVIEW' && !profile.vatRegistered ||
+        profile.vatRegistered && Boolean(vat) && Verification.has(vat, tax)
+    return { code: 'TAX_MISMATCH', message: 'Correct the tax details and provide matching tax evidence.', ok }
   }
 
   private static async matches(entities: Entity[]) {
@@ -139,22 +202,20 @@ export class Verification {
     const account = Secrets.decrypt(bankProfile.accountCiphertext, row.tenantId)
     const taxId = taxProfile.taxIdCiphertext ? Secrets.decrypt(taxProfile.taxIdCiphertext, row.tenantId) : ''
     const vat = taxProfile.vatTrnCiphertext ? Secrets.decrypt(taxProfile.vatTrnCiphertext, row.tenantId) : ''
-    const taxOk = row.country === 'US'
-      ? taxProfile.formType === 'W9' && /^\d{9}$/.test(taxId.replace(/-/g, '')) && Verification.has(taxId, tax)
-      : taxProfile.formType === 'OTHER_REVIEW' && !taxProfile.vatRegistered ||
-        taxProfile.vatRegistered && /^\d{15}$/.test(vat) && Verification.has(vat, tax)
+    const taxResult = Verification.tax(row.country, taxProfile, taxId, vat, tax)
     const standards = Verification.certificateStandards(current)
     const certificateFinding = Verification.local('CERTIFICATE_SCOPE', certificate.some((item) =>
       Verification.has(row.requestedSite, [item]) && Verification.has(row.category, [item]) &&
       standards.some((standard) => Verification.has(standard, [item]))),
       certificate, 'SCOPE_MISMATCH', 'Upload the certificate scope annex covering the requested site and calibration activity.')
     const findings: Finding[] = [
-      Verification.local('BANK_BENEFICIARY', Verification.compact(bankProfile.beneficiary) === Verification.compact(companyProfile.legalName)
+      Verification.local('BANK_BENEFICIARY', Verification.sameName(bankProfile.beneficiary, companyProfile.legalName)
         && Verification.has(bankProfile.beneficiary, bank) && Verification.has(account, bank), bank, 'BANK_MISMATCH', 'Provide bank evidence matching the company name and account.'),
       certificateFinding,
       Verification.local('ENTITY_CONSISTENCY', Verification.has(companyProfile.legalName, registration) && Verification.has(companyProfile.registryId, registration),
         registration, 'REGISTRATION_MISMATCH', 'Provide registration evidence matching the company name and registration identifier.'),
-      Verification.local('TAX_PROFILE', taxOk, tax, 'TAX_MISMATCH', 'Correct the tax details and provide matching tax evidence.'),
+      Verification.local('TAX_PROFILE', taxResult.ok, tax, taxResult.code, taxResult.message),
+      Verification.documentTypes(documents),
     ]
     const ownership = await Verification.ownership(current, documents.get('OWNERSHIP') ?? [])
     return [...findings, ownership]

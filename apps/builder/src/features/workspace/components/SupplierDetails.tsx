@@ -14,7 +14,7 @@ export function SupplierDetails({ detail, supplier = false }: { detail: Detail; 
   const bank = object(detail.values.bank)
   const tax = object(detail.values.tax)
   const routingFields: [string, string][] = !supplier || 'routing' in bank ? [['routing', 'Routing number']] : []
-  const taxIdentifierFields: [string, string][] = !supplier || 'taxId' in tax ? [['taxId', 'Tax ID'], ['vatTrn', 'VAT TRN']] : []
+  const taxIdentifierFields: [string, string][] = !supplier || 'taxId' in tax ? [['taxId', 'Tax ID'], ['vatTrn', 'VAT / GST registration number']] : []
   const ownership = object(detail.values.ownership)
   const final = detail.decisions.find((decision) => ['APPROVE', 'REJECT'].includes(decision.outcome))
   const rejected = final?.outcome === 'REJECT'

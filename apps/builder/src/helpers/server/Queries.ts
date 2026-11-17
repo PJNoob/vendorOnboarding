@@ -29,6 +29,14 @@ export class Queries {
     return actor
   }
 
+  // Check runs are ordered newest attempt first, so the first screening run is the current one.
+  static screeningStage(result: string | undefined, status: string, failed: boolean) {
+    if (result === 'PASS') return 'Clear'
+    if (result) return 'Hold'
+    if (failed) return 'Provider unavailable'
+    return status === 'SUBMITTED' ? 'Running' : 'Waiting'
+  }
+
   private static stages({ policy, row, snapshot }: Current): Output<'run'> {
     const failed = snapshot.workItem_submission.some((item) => item.state === 'FAILED' &&
       (item.kind === 'VERIFY' || item.kind === 'EXTRACT' && snapshot.document_submission.some((document) =>
@@ -42,6 +50,7 @@ export class Queries {
         policy.documents.every((kind) => snapshot.document_submission.some((doc) => doc.kind === kind && doc.status === 'CLEAN')) ? 'Clean' : 'Waiting' },
       { name: 'Extraction', state: failed ? 'Action required' : extracting ? 'Running' : snapshot.workItem_submission.some((item) => item.kind === 'EXTRACT' && item.state === 'SUCCEEDED') ? 'Recorded' : 'Waiting' },
       { name: 'Checks', state: failed ? 'Provider unavailable' : row.status === 'SUBMITTED' ? 'Running' : snapshot.checkRun_submission.length ? 'Recorded' : 'Waiting' },
+      { name: 'Screening', state: Queries.screeningStage(snapshot.checkRun_submission.find((check) => check.ruleKey === 'OWNERSHIP_SCREENING')?.result, row.status, failed) },
       { name: 'Decision', state: row.status },
       { name: 'Follow-up', state: followUp?.state ?? 'Waiting' },
     ] }
@@ -78,7 +87,7 @@ export class Queries {
     durations.sort((left, right) => left - right)
     const middle = Math.floor(durations.length / 2)
     const medianHours = durations.length ? (durations[middle] + durations[Math.floor((durations.length - 1) / 2)]) / 2 : 0
-    return { completed: durations.length, counts, medianHours, reviewerAction, reworkRate: cohort ? reworked / cohort : 0, supplierAction }
+    return { cohort, completed: durations.length, counts, medianHours, reviewerAction, reworked, reworkRate: cohort ? reworked / cohort : 0, supplierAction }
   }
 
   static async audit(actor: Actor, input: Input<'audit'>): Promise<Output<'audit'>> {

@@ -2422,3 +2422,205 @@ summary {
 .review-issue-form > button {
   justify-self:start;
 }
+
+/* Outcome status: Approved / Pending / Rejected with the pending reason underneath. */
+.status-stack {
+  display:inline-flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:3px;
+}
+
+.status-stack small {
+  font-size:10px;
+  color:#68796e;
+  max-width:190px;
+  line-height:1.3;
+}
+
+.filter-count {
+  margin-left:6px;
+  font-size:10px;
+  color:#68796e;
+}
+
+/* Live run timeline */
+.run-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:0 23px 10px;
+}
+
+.run-heading h3 {
+  margin:0;
+  font-size:14px;
+}
+
+.live-pill {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:11px;
+  color:#286454;
+  background:#edf4ef;
+  border-radius:999px;
+  padding:4px 10px;
+}
+
+.live-pill i {
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#286454;
+  animation:live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity:1; }
+  50% { opacity:.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pill i { animation:none; }
+}
+
+.stages small {
+  display:block;
+  margin-top:4px;
+  font-size:10px;
+  line-height:1.3;
+  color:#8a978f;
+}
+
+.stages li.stage-done {
+  background:#edf5ed;
+}
+
+.stages li.stage-done .stage-number {
+  background:#286454;
+  border-color:#286454;
+  color:#ffffff;
+}
+
+.stages li.stage-running {
+  background:#fdf6ea;
+  box-shadow:inset 0 0 0 1px #ecd7b0;
+}
+
+.stages li.stage-running .stage-number {
+  border-color:#ac8852;
+  color:#ac8852;
+}
+
+.stages li.stage-attention {
+  background:#fbeeed;
+}
+
+.stages li.stage-attention .stage-number {
+  background:#b56f69;
+  border-color:#b56f69;
+  color:#ffffff;
+}
+
+/* Why this status */
+.decision-summary {
+  margin:0 23px 20px;
+  border:1px solid #e4e9e6;
+  border-left:4px solid #ac8852;
+  border-radius:8px;
+  padding:14px 16px;
+  background:#ffffff;
+}
+
+.decision-summary.decision-approved {
+  border-left-color:#286454;
+}
+
+.decision-summary.decision-rejected {
+  border-left-color:#b56f69;
+}
+
+.decision-eyebrow {
+  margin:0;
+  font-size:10px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#65756d;
+}
+
+.decision-summary h3 {
+  margin:4px 0 6px;
+  font-size:16px;
+}
+
+.decision-reasons {
+  list-style:none;
+  margin:10px 0 0;
+  padding:0;
+  display:grid;
+  gap:6px;
+  font-size:12px;
+}
+
+.decision-reasons li {
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+}
+
+.decision-reasons li > span:first-child {
+  display:grid;
+  place-items:center;
+  flex-shrink:0;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  font-size:11px;
+  color:#ffffff;
+}
+
+.reason-pass > span:first-child {
+  background:#286454;
+}
+
+.reason-fail > span:first-child {
+  background:#b56f69;
+}
+
+/* Audit history */
+.audit-timeline {
+  list-style:none;
+  margin:8px 0 12px;
+  padding:0 0 0 14px;
+  border-left:2px solid #e4e9e6;
+  display:grid;
+  gap:8px;
+  font-size:12px;
+}
+
+.audit-timeline li {
+  display:grid;
+  grid-template-columns:minmax(150px, auto) 1fr auto;
+  gap:10px;
+  align-items:baseline;
+}
+
+.audit-timeline time,
+.audit-timeline small {
+  color:#65756d;
+  font-size:11px;
+}
+
+@media (max-width: 640px) {
+  .audit-timeline li {
+    grid-template-columns:1fr;
+    gap:2px;
+  }
+
+  .run-heading {
+    flex-direction:column;
+    align-items:flex-start;
+  }
+}

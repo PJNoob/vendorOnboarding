@@ -4,7 +4,7 @@ import {
   OnboardingCaseRepository, OwnershipEdgeRepository, OwnershipEntityRepository,
   QualificationRepository, SubmissionRepository, TaxProfileRepository, type TransactionClient,
 } from '@neo/prisma/repositories'
-import type { Input } from '@neo/schemas'
+import { type Input, TaxIds } from '@neo/schemas'
 
 import { Commands } from './Commands'
 import { DocumentProcessor } from './DocumentProcessor'
@@ -198,6 +198,10 @@ export class DraftService {
       const { row, snapshot } = await DraftService.draft(scoped, input, tx)
       if (input.change.section === 'company') {
         Commands.require(input.change.value.country === row.country, 'company country must match the invitation')
+      }
+      if (input.change.section === 'tax') {
+        const problem = TaxIds.problem(row.country, input.change.value)
+        Commands.require(!problem, problem ?? '')
       }
       await DraftService.apply(input.change, snapshot.id, scoped.tenantId, tx)
       await Commands.audit(scoped, 'DRAFT_SAVED', row.id, tx, { section: input.change.section })
