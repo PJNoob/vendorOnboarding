@@ -56,6 +56,7 @@ export class OpenApi {
     const route = OpenApi.ROUTES[path as keyof typeof OpenApi.ROUTES]
     if (!route) return res.status(404).json({ code: 'NOT_FOUND' })
     if (req.method?.toLowerCase() !== route.method) return res.status(405).json({ code: 'METHOD_NOT_ALLOWED' })
+    if (path === '/v1/supplier/get') res.setHeader('Cache-Control', 'no-store')
     const query = Object.fromEntries(Object.entries(req.query).filter(([key]) => key !== 'trpc').map(([key, value]) => [key, key === 'limit' ? Number(value) : value]))
     const context = await ContextFactory.create({ req })
     const parsed = route.input.safeParse(route.method === 'get' ? query : req.body)

@@ -1191,12 +1191,22 @@ summary {
 }
 
 .supplier-steps button.active {
+  background:#fff;
+  color:var(--ink);
+  border-color:currentColor;
+}
+
+.supplier-steps button.saved {
   background:#e9f3eb;
   color:#376a47;
   border-color:#bcd5c1;
 }
 
-.supplier-steps button>span {
+.supplier-steps button.saved.active {
+  border-color:currentColor;
+}
+
+.supplier-steps button>span[aria-hidden] {
   display:grid;
   place-items:center;
   width:18px;

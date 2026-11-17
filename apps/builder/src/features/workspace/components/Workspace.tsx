@@ -44,7 +44,8 @@ type State = {
 }
 
 export class Workspace extends Component<{ demoAuth?: boolean; countries: Country[] }, State> {
-  static supplierStatus(row: Output<'list'>['items'][number]) {
+  static supplierStatus(row: Output<'list'>['items'][number], supplier = false) {
+    if (row.status === 'SUBMITTED' || supplier && row.status === 'PENDING' && row.submittedAt) return 'Submitted for review'
     if (row.status !== 'INVITED') return Workspace.label(row.status)
     return ({ QUEUED: 'Queued for email check', CHECKING: 'Checking email', INVALID: 'Failed — invalid supplier credentials', VERIFICATION_FAILED: 'Failed — email check unavailable', CANCELED: 'Invitation canceled', UNKNOWN: 'Invitation failed', SENT: 'Invited' } as Record<string, string>)[row.invitationDelivery ?? ''] ?? 'Invited'
   }
@@ -170,23 +171,28 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
     return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
   }
 
-  private async open(caseId: string) {
+  private async open(caseId: string, previous?: Detail) {
     const detail = await (this.state.tenantId ? this.api().cases.get.query({ caseId }) : this.api().supplier.get.query({ caseId }))
-    this.setState((state) => ({ detail, history: [], supplierStep: state.detail?.case.caseId === caseId ? state.supplierStep : 0 }))
+    this.setState((state) => {
+      if (previous && (state.busy || state.detail !== previous)) return null
+      return { detail, history: [], supplierStep: state.detail?.submissionId === detail.submissionId ? state.supplierStep : 0 }
+    })
   }
 
   private async poll() {
     const detail = this.state.detail
     if (this.active && this.state.tenantId && !this.state.busy) {
       await this.api().cases.list.query({ limit: 100 }).then((result) => this.setState({ cases: result.items }), this.report.bind(this))
-      if (detail?.case.status === 'INVITED') await this.open(detail.case.caseId).then(undefined, this.report.bind(this))
+      if (detail?.case.status === 'INVITED') await this.open(detail.case.caseId, detail).then(undefined, this.report.bind(this))
     }
     if (this.active && detail && !this.state.busy && ['DRAFT', 'PENDING', 'SUBMITTED'].includes(detail.case.status)) {
       const run = await this.api().runs.get.query({ caseId: detail.case.caseId }).then((value) => value, () => undefined)
-      if (run && this.state.detail?.case.caseId === detail.case.caseId) {
+      if (run && this.state.detail === detail && !this.state.busy) {
         const status = run.stages.find((stage) => stage.name === 'Decision')?.state
-        if (status !== detail.case.status || JSON.stringify(run.stages) !== JSON.stringify(detail.run.stages)) await this.open(detail.case.caseId).then(undefined, this.report.bind(this))
-        else this.setState({ detail: { ...detail, run } })
+        const scanning = detail.case.status === 'DRAFT' && detail.documents.some((document) => document.status === 'UPLOADED')
+        if (scanning || status !== detail.case.status || JSON.stringify(run.stages) !== JSON.stringify(detail.run.stages)) {
+          await this.open(detail.case.caseId, detail).then(undefined, this.report.bind(this))
+        }
       }
     }
     if (this.active) this.timer = setTimeout(this.poll.bind(this), Workspace.POLL_MS)
@@ -318,9 +324,29 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         await this.open(detail.case.caseId)
       }, null)
     }
-    if (detail.case.status !== 'DRAFT') return null
+    if (detail.case.status !== 'DRAFT' || detail.case.submittedAt) return null
+    const { values } = detail
+    const owners = this.object(values.ownership).entities
+    const steps = [
+      { label: 'Company', saved: Boolean(values.company) },
+      { label: 'Banking', saved: Boolean(values.bank) },
+      { label: 'Tax', saved: Boolean(values.tax) },
+      { label: 'Qualifications', saved: Array.isArray(values.qualifications) && values.qualifications.length > 0 },
+      { label: 'Ownership', saved: Array.isArray(owners) && owners.length > 0 },
+      { label: 'Documents', saved: detail.required.every((kind) => detail.documents.some((doc) => doc.kind === kind && doc.status === 'CLEAN')) },
+      { label: 'Submit', saved: false },
+    ]
     return <div className="supplier-editor" data-step={this.state.supplierStep}>
-      <nav className="supplier-steps" aria-label="Application steps">{['Company', 'Banking', 'Tax', 'Qualifications', 'Ownership', 'Documents', 'Submit'].map((step, index) => <button type="button" key={step} className={this.state.supplierStep === index ? 'active' : ''} aria-current={this.state.supplierStep === index ? 'step' : undefined} onClick={() => this.setState({ supplierStep: index })}><span>{index + 1}</span>{step}</button>)}</nav>
+      <nav className="supplier-steps" aria-label="Application steps">
+        {steps.map(({ label, saved }, index) => {
+          const active = this.state.supplierStep === index
+          return <button type="button" key={label} className={[active && 'active', saved && 'saved'].filter(Boolean).join(' ')}
+            aria-current={active ? 'step' : undefined} onClick={() => this.setState({ supplierStep: index })}>
+            <span aria-hidden="true">{saved ? '✓' : index + 1}</span>{label}
+            {saved && <span className="sr-only">{index === 5 ? ' complete' : ' saved'}</span>}
+          </button>
+        })}
+      </nav>
       <p className="muted">Complete each section and save your changes before moving to the next step.</p>
       {(['company', 'bank', 'tax'] as const).map((section) => this.form(`Save ${section}`, async (form) => {
         const fields = Object.fromEntries([...form.entries()].filter(([, value]) => value !== ''))
@@ -358,6 +384,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         await this.api().supplier.submit.mutate({ ...this.draft(detail), attested: true })
         await this.open(detail.case.caseId)
         await this.refresh()
+        return 'Submitted for review.'
       }, <label className="checkbox-label"><input name="attested" required type="checkbox" /> I confirm these details are accurate and authorized.</label>)}
       <div className="step-controls"><button className="button-secondary" disabled={this.state.supplierStep === 0} onClick={() => this.setState({ supplierStep: this.state.supplierStep - 1 })}>Previous step</button><span>Step {this.state.supplierStep + 1} of 7</span><button disabled={this.state.supplierStep === 6} onClick={() => this.setState({ supplierStep: this.state.supplierStep + 1 })}>Next step <Icon name="arrow" /></button></div>
     </div>
@@ -473,10 +500,11 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
   render() {
     const { analytics, cases, detail, email, error, memberships, tenantId, token, view, search, filter, notice, loading } = this.state
     const role = memberships.find((member) => member.tenantId === tenantId)?.role
+    const submittedProfile = Boolean(!role && detail?.case.submittedAt)
     const canInvite = role === 'ADMIN' || role === 'BUYER'
     const canCreateApplication = !role && this.state.authChannel === 'EMAIL_OTP'
     const pending = cases.filter((row) => ['PENDING', 'SUBMITTED'].includes(row.status))
-    const visible = cases.filter((row) => (view !== 'reviews' || ['PENDING', 'SUBMITTED'].includes(row.status)) && (filter === 'ALL' || row.status === filter) && `${row.name} ${row.supplierEmail ?? ''} ${row.requestedSite} ${row.number}`.toLowerCase().includes(search.toLowerCase()))
+    const visible = cases.filter((row) => (view !== 'reviews' || ['PENDING', 'SUBMITTED'].includes(row.status)) && (filter === 'ALL' || row.status === filter || filter === 'PENDING' && row.status === 'SUBMITTED') && `${row.name} ${row.supplierEmail ?? ''} ${row.requestedSite} ${row.number}`.toLowerCase().includes(search.toLowerCase()))
     const nav: { id: State['view']; label: string; icon: string }[] = [{ id: 'overview', label: 'Overview', icon: 'grid' }, { id: 'suppliers', label: role ? 'Suppliers' : 'My applications', icon: 'suppliers' }, ...(role ? [{ id: 'reviews' as const, label: 'Review queue', icon: 'check' }] : []), ...(role === 'ADMIN' ? [{ id: 'team' as const, label: 'Team & access', icon: 'team' }] : [])]
     return <><Head><title>Harbor | Supplier onboarding</title><meta name="description" content="Your Harbor BioLabs supplier onboarding workspace. Manage invitations, complete applications, and track verification." /><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
       {!email ? loading ? <div className="loading-screen"><span className="brand-mark"><Icon name="harbor" /></span><p>Opening your workspace…</p></div> : this.signIn() : <div className="app-shell">
@@ -491,7 +519,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         {error && <p role="alert">{error}</p>}{notice && <p className="notice" role="status"><Icon name="check" />{notice}<button className="icon-button" aria-label="Dismiss notification" onClick={() => this.setState({ notice: '' })}>×</button></p>}
         {token && (this.state.authChannel !== 'EMAIL_OTP' ? <section className="panel"><h2>Open this invitation as a supplier</h2><p>This session is signed in as a buyer. Use supplier email sign-in with the address that received the invitation.</p><button className="primary-button" onClick={() => this.supplierSignOut().catch(this.report.bind(this))}>Sign in as the invited supplier</button></section> : this.form('Open supplier invitation', async () => this.acceptInvitation(), <p>This invitation belongs to the email address that received it. Sign in with that address to open your application.</p>))}
         {!role && this.state.pendingInvitations.length > 0 && <section className="panel"><h2>Your supplier invitations</h2><p>Accept an invitation to complete your supplier profile.</p>{this.state.pendingInvitations.map((invite) => <div key={invite.id}><h3>{invite.requestedSite}</h3><p>Country: {invite.country}</p><button className="primary-button" disabled={this.state.busy} onClick={() => this.acceptInvitation(invite.id).catch(this.report.bind(this))}>Start onboarding</button></div>)}</section>}
-        {!role && cases.some((row) => row.status === 'DRAFT') && <section className="panel"><h2>Complete your supplier profile</h2><p>Your application is incomplete. Add your company, banking, tax, and ownership details and upload the required documents.</p>{cases.filter((row) => row.status === 'DRAFT').map((row) => <button className="button-secondary" key={row.caseId} onClick={() => this.open(row.caseId).catch(this.report.bind(this))}>Continue profile — {row.name || row.requestedSite}</button>)}</section>}
+        {!role && !detail && cases.some((row) => row.status === 'DRAFT') && <section className="panel"><h2>Complete your supplier profile</h2><p>Your application is incomplete. Add your company, banking, tax, and ownership details and upload the required documents.</p>{cases.filter((row) => row.status === 'DRAFT').map((row) => <button className="button-secondary" key={row.caseId} onClick={() => this.open(row.caseId).catch(this.report.bind(this))}>Continue profile — {row.name || row.requestedSite}</button>)}</section>}
         {memberships.length > 1 && this.form('Switch workspace', async (form) => { const tenantId = String(form.get('tenantId')); await this.api().identity.selectTenant.mutate({ idempotencyKey: crypto.randomUUID(), tenantId }); await new Promise<void>((resolve) => this.setState({ detail: undefined, tenantId }, resolve)); await this.refresh() }, <label>Workspace<select name="tenantId" defaultValue={tenantId}>{memberships.map((member) => <option key={member.tenantId}>{member.tenantId}</option>)}</select></label>)}
         {canCreateApplication && this.state.showNewApplication && <section className="panel invite-panel"><div className="panel-heading"><div><h2>Start a new application</h2><p>Apply to Harbor BioLabs. Complete your profile and submit it for review.</p></div><button className="icon-button" disabled={this.state.busy} aria-label="Close new application form" onClick={() => this.setState({ showNewApplication: false })}>×</button></div>{this.form('Create application', this.createApplication.bind(this), <><label>Requested service site<input name="requestedSite" required maxLength={Values.MAX_TEXT} defaultValue={this.pendingApplication?.input.requestedSite ?? ''} /></label>{this.fields([{ label: 'Country', name: 'country', allCountries: true }], this.pendingApplication?.input)}</>)}</section>}
         {canInvite && this.state.showInvite && <section className="panel invite-panel"><div className="panel-heading"><div><h2>Start a new partnership</h2><p>Invite a supplier to complete their company profile and verification.</p></div><button className="icon-button" aria-label="Close invitation form" onClick={() => this.setState({ showInvite: false })}>×</button></div>{this.form('Send supplier invitation', async (form) => { const result = await this.api().cases.create.mutate(inputs.create.parse({ ...Object.fromEntries(form.entries()), category: 'CALIBRATION', idempotencyKey: crypto.randomUUID() })); this.setState({ showInvite: false }); await this.refresh(); await this.open(result.id); return 'Supplier queued for email verification. One queued supplier is checked every 35 seconds.' }, this.fields([{ label: 'Supplier email', name: 'supplierEmail', type: 'email' }, { label: 'Requested service site', name: 'requestedSite' }, { label: 'Country', name: 'country', allCountries: true }]))}</section>}
@@ -505,13 +533,14 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         </section>}
         {!detail && view === 'team' && role === 'ADMIN' ? this.team() : !detail && <div className={view === 'overview' ? 'overview-grid' : ''}><section className="panel supplier-panel"><div className="panel-heading"><div><h2>{view === 'reviews' ? 'Review queue' : role ? 'Supplier pipeline' : 'Your applications'}<span className="count-label">{view === 'reviews' ? pending.length : cases.length}</span></h2><p>{view === 'reviews' ? 'Applications awaiting verification and decisions.' : 'A little visibility goes a long way.'}</p></div>{view === 'overview' && <button className="text-button" onClick={() => this.setState({ view: 'suppliers' })}>View all <Icon name="arrow" /></button>}</div>
           <div className="table-toolbar"><div className="filter-tabs">{[['ALL', 'All suppliers'], ['PENDING', 'In review'], ['APPROVED', 'Approved'], ['REJECTED', 'Rejected']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => this.setState({ filter: value })}>{label}</button>)}</div><label className="search-field"><Icon name="search" /><input aria-label="Search suppliers" placeholder="Search suppliers…" value={search} onChange={(event) => this.setState({ search: event.target.value })} /></label></div>
-          <div className="table-scroll"><table><thead><tr><th>Supplier</th><th>Supplier email</th><th>Service site</th><th>Open issues</th><th>Status</th><th>Last updated</th><th><span className="sr-only">Open application</span></th></tr></thead><tbody>{visible.map((row) => <tr key={row.caseId}><td><button className="supplier-link" onClick={() => this.open(row.caseId).then(undefined, this.report.bind(this))}><span className="supplier-avatar">{(row.name || row.requestedSite).slice(0, 2).toUpperCase()}</span><span><strong>{row.name || row.requestedSite}</strong><small>{row.name ? row.requestedSite : `Application #${row.number}`}</small></span></button></td><td className="supplier-email">{row.supplierEmail || 'Not provided'}</td><td>{row.requestedSite}</td><td>{row.issueCount ? <button className="issue-count" onClick={() => this.open(row.caseId).then(undefined, this.report.bind(this))}>{row.issueCount} open</button> : 'None'}</td><td><span className={`status status-${Workspace.supplierStatusClass(row)}`}><i />{Workspace.supplierStatus(row)}</span></td><td className="date-cell">{new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(row.updatedAt))}</td><td><button className="icon-button" aria-label={`Open ${row.name || row.requestedSite}`} onClick={() => this.open(row.caseId).then(undefined, this.report.bind(this))}><Icon name="arrow" /></button></td></tr>)}</tbody></table></div>
+          <div className="table-scroll"><table><thead><tr><th>Supplier</th><th>Supplier email</th><th>Service site</th><th>Open issues</th><th>Status</th><th>Last updated</th><th><span className="sr-only">Open application</span></th></tr></thead><tbody>{visible.map((row) => <tr key={row.caseId}><td><button className="supplier-link" onClick={() => this.open(row.caseId).then(undefined, this.report.bind(this))}><span className="supplier-avatar">{(row.name || row.requestedSite).slice(0, 2).toUpperCase()}</span><span><strong>{row.name || row.requestedSite}</strong><small>{row.name ? row.requestedSite : `Application #${row.number}`}</small></span></button></td><td className="supplier-email">{row.supplierEmail || 'Not provided'}</td><td>{row.requestedSite}</td><td>{row.issueCount ? <button className="issue-count" onClick={() => this.open(row.caseId).then(undefined, this.report.bind(this))}>{row.issueCount} open</button> : 'None'}</td><td><span className={`status status-${Workspace.supplierStatusClass(row)}`}><i />{Workspace.supplierStatus(row, !role)}</span></td><td className="date-cell">{new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(row.updatedAt))}</td><td><button className="icon-button" aria-label={`Open ${row.name || row.requestedSite}`} onClick={() => this.open(row.caseId).then(undefined, this.report.bind(this))}><Icon name="arrow" /></button></td></tr>)}</tbody></table></div>
           {!visible.length && <div className="empty-state"><span className="empty-icon"><Icon name={search || filter !== 'ALL' ? 'search' : 'suppliers'} /></span><h3>{search || filter !== 'ALL' ? 'No matching suppliers' : view === 'reviews' ? 'Your review queue is clear' : 'Your next partnership starts here'}</h3><p>{search || filter !== 'ALL' ? 'Try another search or choose a different status.' : canInvite ? 'Invite your first supplier. We’ll guide them through the rest.' : canCreateApplication ? 'Start an application to submit your company for review.' : 'Applications shared with you will appear here.'}</p>{canInvite && !search && filter === 'ALL' && view !== 'reviews' && <button className="button-secondary" onClick={() => this.setState({ showInvite: true })}><Icon name="plus" />Invite your first supplier</button>}{canCreateApplication && !search && filter === 'ALL' && <button className="button-secondary" disabled={this.state.busy} onClick={() => this.setState({ showNewApplication: true })}><Icon name="plus" />Start your first application</button>}</div>}
           <div className="table-footer"><span>{visible.length} of {cases.length} loaded applications</span><span>Latest 100 applications</span></div>
         </section>{view === 'overview' && <aside className="next-panel"><span className="next-icon"><Icon name="check" /></span><h2>Keep things moving.</h2><p>{pending.length ? `${pending.length} applications are waiting for review. Your next decision brings a partnership closer.` : 'A good start makes every next step easier. Here’s what to focus on.'}</p><div className="next-task"><Icon name="mail" /><div><strong>{canInvite ? 'Make the first introduction' : 'Complete your profile'}</strong><p>{canInvite ? 'Send an invitation to start onboarding.' : 'Open an application to add your details.'}</p></div></div><div className="next-task"><Icon name="shield" /><div><strong>Let evidence lead the way</strong><p>Company, tax, and banking details come together for verification.</p></div></div><button className="text-button" onClick={() => this.setState({ view: role ? 'reviews' : 'suppliers' })}>{role ? 'Open review queue' : 'Open my applications'}<Icon name="arrow" /></button><div className="next-note"><Icon name="lock" /><span>Access is tailored to your role.</span></div></aside>}</div>}
-        {detail && <section className="panel detail-panel"><button className="text-button back-button" onClick={() => this.setState({ detail: undefined })}>← Back to {view === 'reviews' ? 'review queue' : 'suppliers'}</button><div className="panel-heading"><div><h2>Application overview</h2><p>Follow progress and see what needs to happen next.</p></div><span className={`status status-${Workspace.supplierStatusClass(detail.case)}`}><i />{Workspace.supplierStatus(detail.case)}</span></div>
+        {detail && <section className="panel detail-panel"><button className="text-button back-button" onClick={() => this.setState({ detail: undefined })}>← Back to {view === 'reviews' ? 'review queue' : 'suppliers'}</button><div className="panel-heading"><div><h2>{submittedProfile ? 'Submitted application' : 'Application overview'}</h2>
+          <p>{submittedProfile ? 'Read-only copy of the details you submitted.' : 'Follow progress and see what needs to happen next.'}</p></div><span className={`status status-${Workspace.supplierStatusClass(detail.case)}`}><i />{Workspace.supplierStatus(detail.case, !role)}</span></div>
           <ol className="stages" aria-label="Verification progress" aria-live="polite">{detail.run.stages.map((stage, index) => <li key={stage.name}><span className="stage-number">{index + 1}</span><div>{stage.name}<strong>{Workspace.label(stage.state)}</strong></div></li>)}</ol>
-          {role && <SupplierDetails detail={detail} />}
+          {(role || submittedProfile) && <SupplierDetails detail={detail} supplier={!role} />}
           {detail.issues.length > 0 && <div className="issues"><h3>Needs attention</h3>{detail.issues.map((issue) => <p key={issue.id}>{issue.message || Workspace.label(issue.code)}</p>)}</div>}
           {detail.verificationReport && <details className="check-details"><summary>Cross-document verification — {Workspace.label(detail.verificationReport.recommendation)}</summary><p>Consistency findings support the internal review. A reviewer makes the final decision.</p>{detail.verificationReport.findings.map((finding) => <div key={finding.rule}><h3>{Workspace.label(finding.rule)} · {Workspace.label(finding.result)}</h3><p>{finding.message}</p>{finding.evidence.map((item, index) => <p key={`${item.documentId}-${item.field}-${index}`}><strong>{Workspace.label(item.field)}: {item.value}</strong> · {Workspace.label(detail.documents.find((document) => document.id === item.documentId)?.kind ?? item.documentId)}, page {item.page}<br /><q>{item.quote}</q></p>)}</div>)}</details>}
           {detail.certificateScopeReview && <details className="check-details">
@@ -529,7 +558,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
           {detail.case.status === 'INVITED' && detail.case.invitationDelivery === 'INVALID' && <p role="alert">Incorrect supplier credentials. Enter the correct supplier email.</p>}
           {detail.case.status === 'INVITED' && detail.case.invitationDelivery === 'VERIFICATION_FAILED' && <p role="alert">Email verification failed. No invitation was sent. Check the verification service configuration and retry.</p>}
           {detail.case.status === 'INVITED' && ['QUEUED', 'CHECKING'].includes(detail.case.invitationDelivery ?? '') && <p role="status">Your supplier is queued for email verification. One supplier is checked every 35 seconds; the invitation email is sent only after a successful check.</p>}
-          <div className="document-section"><h3>Supporting documents <span className="count-label">{detail.documents.length}</span></h3>{!detail.documents.length && <p className="muted">Documents will appear here as your supplier completes their application.</p>}{detail.documents.map((doc) => <div className="document-row" key={doc.id}><Icon name="document" /><strong>{Workspace.label(doc.kind)}</strong><span className="document-status">{Workspace.label(doc.status)}</span>{doc.status === 'CLEAN' && (!role || role === 'ADMIN' || role === 'REVIEWER' || role === 'COMPLIANCE' && doc.kind === 'OWNERSHIP') && <button className="button-secondary" onClick={() => this.api().documents.download.mutate({ caseId: detail.case.caseId, documentId: doc.id }).then((result) => window.location.assign(result.url), this.report.bind(this))}>Download</button>}{!role && detail.case.status === 'DRAFT' && <button className="text-button" onClick={() => this.api().documents.remove.mutate({ ...this.draft(detail), documentId: doc.id }).then(() => this.open(detail.case.caseId)).then(undefined, this.report.bind(this))}>Remove</button>}</div>)}</div>
+          <div className="document-section"><h3>Supporting documents <span className="count-label">{detail.documents.length}</span></h3>{!detail.documents.length && <p className="muted">Documents will appear here as your supplier completes their application.</p>}{detail.documents.map((doc) => <div className="document-row" key={doc.id}><Icon name="document" /><strong>{Workspace.label(doc.kind)}</strong><span className="document-status">{Workspace.label(doc.status)}</span>{doc.status === 'CLEAN' && (!role || role === 'ADMIN' || role === 'REVIEWER' || role === 'COMPLIANCE' && doc.kind === 'OWNERSHIP') && <button className="button-secondary" onClick={() => this.api().documents.download.mutate({ caseId: detail.case.caseId, documentId: doc.id }).then((result) => window.location.assign(result.url), this.report.bind(this))}>Download</button>}{!role && detail.case.status === 'DRAFT' && !detail.case.submittedAt && <button className="text-button" onClick={() => this.api().documents.remove.mutate({ ...this.draft(detail), documentId: doc.id }).then(() => this.open(detail.case.caseId)).then(undefined, this.report.bind(this))}>Remove</button>}</div>)}</div>
           {this.form('Refresh case', async () => this.open(detail.case.caseId), null)}{role ? this.viewBuyer(detail, role) : this.viewSupplier(detail)}
         </section>}
         <footer className="page-footer"><span>Harbor BioLabs</span><span>Trusted partnerships. Thoughtful progress.</span></footer>
