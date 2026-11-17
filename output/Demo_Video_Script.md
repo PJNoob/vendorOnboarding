@@ -7,14 +7,14 @@
 
 ## Before you hit record (do this 30 minutes ahead)
 
-Some steps take real time: an invitation waits up to ~35 s for the mailbox check, and OCR plus checks take about a minute per submission. Don't wait on camera. Pre-stage the cases below so each one is already at the right point. The PDFs and the exact values to type for every case are in `output/demo_documents/` (see its README). Show **one** step running live (the happy-path submission) and narrate the rest from where it already stands.
+Some steps take real time: an invitation waits up to ~35 s for the mailbox check, and OCR plus checks take about a minute per submission. Don't wait on camera. Pre-stage the cases below so each one is already at the right point. Show **one** step running live (the happy-path submission) and narrate the rest from where it already stands.
 
 | Case | Supplier (use real-sounding names) | Pre-stage to | What you'll show |
 |---|---|---|---|
-| A, happy path | *Cedar Meridian QA Calibration LLC*, site *Newark Calibration Lab* (US, W-9, EIN `12-3456789`, bank beneficiary = legal name, ISO 17025 certificate covering the requested site). Files `A1`–`A5` | Supplier application **filled in, documents Clean, not yet submitted** | Submit live → live run → approve |
-| B, tax format | *Lakeshore Precision Instruments LLC*, site *Chicago Calibration Lab*. Files `B1`–`B2` | Draft open on the Tax step | Enter a UAE TRN `100123456700003` as the US tax ID → refused at save |
-| C, wrong doc + scope | *Northwind Metrology Inc.*, site *Edison Calibration Lab*: ISO certificate (`C2`) uploaded as **Bank** evidence, certificate (`C4`) scope covers Trenton only, **omitting the requested site** | Submitted, checks finished → **Pending** | "Why this status", supplier correction email |
-| D, hidden sanctioned owner | *Blue Harbor Labs LLC*, site *Camden Calibration Lab*: owned 80% by *Harbor Crest Holdings Ltd*, which is 60% owned by registry ID `FIXTURE-BLOCKED-001` (demo screening on). Files `D1`–`D5` | Submitted → **Pending, compliance hold** | Hold propagates up the chain → reject with reason |
+| A, happy path | *Cedar Meridian QA Calibration LLC* (US, W-9, EIN `12-3456789`, bank beneficiary = legal name, ISO 17025 certificate covering the requested site) | Supplier application **filled in, documents Clean, not yet submitted** | Submit live → live run → approve |
+| B, tax format | Any US supplier draft | Draft open on the Tax step | Enter a UAE TRN `100123456700003` as the US tax ID → refused at save |
+| C, wrong doc + scope | *Northwind Metrology Ltd* — ISO certificate uploaded as **Bank** evidence, certificate scope **omits the requested site** | Submitted, checks finished → **Pending** | "Why this status", supplier correction email |
+| D, hidden sanctioned owner | *Blue Harbor Labs* — owned 80% by a parent that is 60% owned by registry ID `FIXTURE-BLOCKED-001` (demo screening on) | Submitted → **Pending, compliance hold** | Hold propagates up the chain → reject with reason |
 
 Also have ready:
 - Two browser windows: **Buyer** (Google sign-in, Admin) and **Supplier** (email code sign-in, Case A's address). Log both in beforehand.
@@ -28,7 +28,7 @@ Also have ready:
 ### 0:00–0:25 — The problem and what this does
 *[Buyer window, Overview page]*
 
-> "Before a company can pay a vendor, someone has to verify that vendor is legitimate. Today that's a person reading PDFs, comparing names and tax IDs by eye, and chasing suppliers by email. This is Harbor. It takes a vendor submission and returns one of three answers, approved, pending or rejected, with the reasoning visible. For anything not approved, it tells the supplier exactly what to fix. It runs live on Google Cloud: GKE, Cloud SQL and Gemini on Vertex AI, deployed through Cloud Build."
+> "Before a company can pay a vendor, someone has to verify that vendor is legitimate. Today that's a person reading PDFs, comparing names and tax IDs by eye, and chasing suppliers by email. This is Harbor. It takes a vendor submission and returns one of three answers, approved, pending or rejected, with the reasoning visible. For anything not approved, it tells the supplier exactly what to fix. It runs live on Google Cloud: GKE, Cloud SQL, Document AI and Gemini, deployed through Cloud Build."
 
 *[Point at the journey strip: Invite → Collect → Verify → Approve]*
 
@@ -46,7 +46,7 @@ Also have ready:
 
 *[Switch to Buyer window → open Case A → scroll to **Live run**]*
 
-> "Now watch the live run. Documents are clean. Extraction is Gemini reading every page as an image, then pulling out typed fields with the exact quote and page each value came from. If two documents disagree, an AI agent checks whether it's the same value written differently or a real conflict. Checks compares what the supplier declared against what the documents actually say. Screening walks the ownership chain against sanctions data."
+> "Now watch the live run. Documents are clean. Extraction is Google Document AI doing OCR, then Gemini pulling out typed fields with the exact quote and page each value came from. Checks compares what the supplier declared against what the documents actually say. Screening walks the ownership chain against sanctions data."
 
 *[Wait for the stages to turn green. If it's slow, keep talking about the next line.]*
 
@@ -73,7 +73,7 @@ Also have ready:
 > "Refused at save, before it ever reaches a reviewer. It says what's expected, a US EIN, and gives an example. This works for thirteen countries, including the published checksums for Indian GSTINs, UK VAT numbers and Australian ABNs."
 
 ### 2:30–3:25 — Edge case 2: wrong document + certificate doesn't cover the site
-*[Buyer window, open Case C, Northwind Metrology]*
+*[Buyer window, open Case C, Northwind]*
 
 > "Second edge case: a submission that looks fine on the surface. Here the supplier uploaded their ISO certificate in the bank evidence slot, and the certificate's scope doesn't include the site we're onboarding them for."
 
@@ -83,12 +83,12 @@ Also have ready:
 
 *[Switch to the Gmail tab and open the correction email]*
 
-> "And this is what the supplier received automatically: what we need from you, item by item. The bank file isn't a bank document, so upload a bank letter showing the account holder and account number. The account number therefore can't be verified. And the requested site isn't on the certificate. No one had to write that email. When the supplier uploads the right files and resubmits, the checks run again on the new revision."
+> "And this is what the supplier received automatically: what we need from you, item by item. Upload a bank letter showing the account holder and account number. Upload the scope annex covering the requested site. No one had to write that email. When the supplier uploads the right files and resubmits, the checks run again on the new revision."
 
 ### 3:25–4:20 — Edge case 3: sanctioned owner hidden two levels up
 *[Buyer window, open Case D, Blue Harbor Labs]*
 
-> "Third edge case, and the one that matters most for fraud and compliance. Blue Harbor Labs itself is clean, and every document check passed. But it's 80% owned by Harbor Crest Holdings, and Harbor Crest is 60% owned by a sanctioned entity."
+> "Third edge case, and the one that matters most for fraud and compliance. Blue Harbor Labs itself is clean. But it's 80% owned by a parent company, and that parent is 60% owned by a sanctioned entity."
 
 *[Point at Live run: **Screening → Hold**. Open the ownership screening hold issue.]*
 
