@@ -21,6 +21,7 @@ spec:
     metadata:
       annotations:
         vendor-onboarding/commit: {{ $root.Values.commitSha | quote }}
+        vendor-onboarding/migrations: {{ $root.Values.migrationsHash | quote }}
       labels:
         app.kubernetes.io/instance: {{ $root.Release.Name }}
         app.kubernetes.io/component: {{ $role }}
@@ -43,9 +44,26 @@ spec:
           type: RuntimeDefault
       {{- if eq $role "worker" }}
       initContainers:
-        - name: clamav-signatures
+        - name: clamav-seed
           image: {{ $root.Values.image | quote }}
-          command: ["freshclam", "--datadir=/tmp/clamav", "--log=/tmp/clamav/freshclam.log", "--pid=/tmp/clamav/freshclam.pid"]
+          command: ["sh", "-c", "cp /opt/clamav-seed/* /tmp/clamav/"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 1000
+          volumeMounts:
+            - mountPath: /tmp/clamav
+              name: clamav
+        # Native sidecar: keeps signatures current in the background without delaying startup.
+        - name: clamav-refresh
+          image: {{ $root.Values.image | quote }}
+          restartPolicy: Always
+          command: ["freshclam", "--daemon", "--foreground", "--stdout", "--datadir=/tmp/clamav", "--pid=/tmp/clamav/freshclam.pid"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
             runAsUser: 1000

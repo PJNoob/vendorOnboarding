@@ -1,10 +1,13 @@
 import base64
 import copy
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from deploy import Deployment, LockLost, clean_resource, newer_build, secret_values, validate_secret
+from deploy import (Deployment, LockLost, clean_resource, migrations_applied, migrations_hash, newer_build,
+                    secret_values, validate_secret)
 
 
 class DeploymentTests(unittest.TestCase):
@@ -80,6 +83,50 @@ class DeploymentTests(unittest.TestCase):
             deployment.deploy()
             get.assert_not_called()
             release.assert_called_once()
+
+    def test_migrations_hash_tracks_names_and_contents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / '0001_init').mkdir()
+            (root / '0001_init' / 'migration.sql').write_text('CREATE TABLE a ();')
+            first = migrations_hash(root)
+            self.assertEqual(first, migrations_hash(root))
+            (root / '0001_init' / 'migration.sql').write_text('CREATE TABLE b ();')
+            changed = migrations_hash(root)
+            self.assertNotEqual(first, changed)
+            (root / '0002_more').mkdir()
+            (root / '0002_more' / 'migration.sql').write_text('SELECT 1;')
+            self.assertNotEqual(changed, migrations_hash(root))
+            with self.assertRaises(RuntimeError): migrations_hash(root / 'missing')
+
+    def test_migrations_applied_requires_matching_live_annotation(self):
+        live = {'spec': {'template': {'metadata': {'annotations': {'vendor-onboarding/migrations': 'h'}}}}}
+        self.assertTrue(migrations_applied(live, 'h'))
+        self.assertFalse(migrations_applied(live, 'other'))
+        self.assertFalse(migrations_applied({'spec': {'template': {}}}, 'h'))
+        self.assertFalse(migrations_applied({}, 'h'))
+
+    def test_migration_job_runs_only_when_migrations_changed(self):
+        for live_hash, expected_runs in (('h', 0), ('older', 1), (None, 1)):
+            with self.subTest(live_hash=live_hash):
+                with patch.dict(os.environ, {'PROJECT_ID': 'p', '_REGION': 'r', 'BUILD_ID': 'b', 'COMMIT_SHA': 's'}):
+                    deployment = Deployment()
+                annotations = {'vendor-onboarding/commit': 's'}
+                if live_hash: annotations['vendor-onboarding/migrations'] = live_hash
+                live = {'metadata': {'name': 'web'}, 'spec': {'template': {'metadata': {'annotations': annotations}}}}
+                helm = []
+                def run(command, **kwargs):
+                    if command[:2] == ['helm', 'upgrade']: helm.append(command)
+                    return (0, b'[{"revision":2}]' if command[:2] == ['helm', 'history'] else b'{}')
+                with patch('deploy.Path.read_text', return_value='r-docker.pkg.dev/p/vendor-onboarding/app@sha256:abc'), \
+                        patch('deploy.validate_secret'), patch('deploy.migrations_hash', return_value='h'), \
+                        patch.object(deployment, 'acquire'), patch.object(deployment, 'release'), \
+                        patch.object(deployment, 'superseded', return_value=False), patch.object(deployment, 'get', return_value=live), \
+                        patch.object(deployment, 'run', side_effect=run), patch.object(deployment, 'migrate') as migrate, \
+                        patch.object(deployment, 'rollout'), patch.object(deployment, 'kube'), patch.object(deployment, 'smoke'):
+                    deployment.deploy()
+                self.assertEqual(migrate.call_count, expected_runs)
+                self.assertIn('migrationsHash=h', helm[0])
 
     def test_failed_helm_and_failed_smoke_restore_exact_pod_templates(self):
         for failure in ('upgrade', 'smoke'):

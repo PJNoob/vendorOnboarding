@@ -2,6 +2,7 @@
 import base64
 import copy
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,8 @@ import time
 NAMESPACE = 'vendor-onboarding'
 RELEASE = 'vendor-onboarding'
 LEASE = 'vendor-onboarding-deployment'
+MIGRATIONS = Path('packages/prisma/postgresql/migrations')
+MIGRATIONS_ANNOTATION = 'vendor-onboarding/migrations'
 TTL = 90
 TERMINAL = {'SUCCESS', 'FAILURE', 'INTERNAL_ERROR', 'TIMEOUT', 'CANCELLED', 'EXPIRED'}
 
@@ -26,6 +29,21 @@ def newer_build(current, candidates):
         return dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
     return any(b.get('buildTriggerId') == current.get('buildTriggerId')
                and timestamp(b['createTime']) > timestamp(current['createTime']) for b in candidates)
+
+
+def migrations_hash(directory=MIGRATIONS):
+    if not directory.is_dir():
+        raise RuntimeError('Migrations directory is missing from the checked source')
+    digest = hashlib.sha256()
+    for path in sorted(p for p in directory.rglob('*') if p.is_file()):
+        digest.update(path.relative_to(directory).as_posix().encode() + b'\0' + path.read_bytes() + b'\0')
+    return digest.hexdigest()
+
+
+def migrations_applied(deployment, current):
+    """True when the live release was already deployed with exactly these migrations."""
+    annotations = deployment.get('spec', {}).get('template', {}).get('metadata', {}).get('annotations', {})
+    return annotations.get(MIGRATIONS_ANNOTATION) == current
 
 
 def clean_resource(resource):
@@ -241,15 +259,20 @@ class Deployment:
             new_secret = {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': RELEASE, 'namespace': NAMESPACE},
                           'type': 'Opaque', 'stringData': values}
             previous_revision = json.loads(self.run(['helm', 'history', RELEASE, '-n', NAMESPACE, '-o', 'json'])[1])[-1]['revision']
+            migrations = migrations_hash()
             changed, helm_started = False, False
             try:
                 self.kube('apply', '-f', '-', payload=new_secret, private=True)
                 changed = True
-                self.migrate(app)
+                if migrations_applied(snapshots[0], migrations):
+                    print('Migrations unchanged since the live release; skipping the migration Job', flush=True)
+                else:
+                    self.migrate(app)
                 helm_started = True
                 self.run(['helm', 'upgrade', '--install', RELEASE, 'infra/helm/builder', '-n', NAMESPACE,
                           '-f', 'infra/helm/builder/values.production.yaml', '--set-string', f'image={app}',
                           '--set-string', f'documentService.image={document}', '--set-string', f'commitSha={self.sha}',
+                          '--set-string', f'migrationsHash={migrations}',
                           '--atomic', '--wait', '--timeout', '15m', '--history-max', '10'])
                 self.rollout()
                 self.smoke()
