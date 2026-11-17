@@ -38,6 +38,13 @@ resource "google_project_service" "app" {
   disable_on_destroy = false
 }
 
+# Pod logs are written to the project that owns the GKE cluster, not the app project.
+resource "google_project_service" "host_logging" {
+  project            = var.host_project_id
+  service            = "logging.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_artifact_registry_repository" "app" {
   project       = data.google_project.app.project_id
   location      = var.region
