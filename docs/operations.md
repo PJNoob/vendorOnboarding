@@ -24,7 +24,7 @@ make seed
 pnpm dev
 ```
 
-Run `pnpm worker` in a second terminal with the same exported environment. The worker needs ClamAV and current signatures in `/tmp/clamav`, plus the Python document service described below. Install them locally or use the supplied container. It sends messages only when the application invokes an OTP or a queued notification.
+Run `pnpm worker` in a second terminal with the same exported environment. The worker needs ClamAV and current signatures in `/tmp/clamav`, plus the Python document service described below. Install them locally or use the supplied container, which ships a signature seed in `/opt/clamav-seed`; on GKE the worker copies it to `/tmp/clamav` at start and a `clamav-refresh` sidecar keeps it current. It sends messages only when the application invokes an OTP or a queued notification.
 
 ## Google sign-in setup and troubleshooting
 

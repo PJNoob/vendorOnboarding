@@ -56,11 +56,13 @@ steps:
     waitFor: [application-checks, document-checks, pipeline-checks, helm-checks]
     entrypoint: bash
     args: [scripts/ci/build-images.sh]
+  - id: deploy-image
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    entrypoint: bash
+    args: [scripts/ci/deploy-tools.sh, build]
   - id: deploy
-    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
-    waitFor: [images]
-    entrypoint: /usr/local/bin/entrypoint.sh
-    env:
-      - COMPONENTS=kubectl google-cloud-cli-gke-gcloud-auth-plugin
-      - APT_PACKAGES=curl python3
-    args: [bash, scripts/ci/deploy.sh]
+    name: gcr.io/cloud-builders/docker
+    waitFor: [images, deploy-image]
+    entrypoint: bash
+    args: [scripts/ci/deploy-tools.sh, run]

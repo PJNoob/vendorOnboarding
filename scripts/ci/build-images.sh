@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export DOCKER_BUILDKIT=1
 tag="${COMMIT_SHA:-local}-${BUILD_ID:-check}"
 registry="${_REGION}-docker.pkg.dev/${PROJECT_ID}/vendor-onboarding"
-docker build -f infra/docker/builder/Dockerfile -t "$registry/vendor-onboarding:$tag" .
-docker build -f services/document-verification/Dockerfile -t "$registry/document-verification:$tag" services/document-verification
+# The :cache tags hold the layers of the last deployed build; validation builds only read them.
+docker pull "$registry/vendor-onboarding:cache" || true
+docker pull "$registry/document-verification:cache" || true
+docker build -f infra/docker/builder/Dockerfile -t "$registry/vendor-onboarding:$tag" \
+  --cache-from "$registry/vendor-onboarding:cache" --build-arg BUILDKIT_INLINE_CACHE=1 --build-arg "SIGNATURE_DATE=$(date +%F)" .
+docker build -f services/document-verification/Dockerfile -t "$registry/document-verification:$tag" \
+  --cache-from "$registry/document-verification:cache" --build-arg BUILDKIT_INLINE_CACHE=1 services/document-verification
 source scripts/ci/test-env.sh
 export GOOGLE_CLIENT_ID=123456789-ci.apps.googleusercontent.com GOOGLE_CLIENT_SECRET=ci-oauth-client-secret-000000000000
 test_env=()
@@ -26,4 +32,8 @@ if [ "${_DEPLOY}" = true ]; then
   docker push "$registry/document-verification:$tag"
   docker inspect --format '{{index .RepoDigests 0}}' "$registry/vendor-onboarding:$tag" > /workspace/app-image.txt
   docker inspect --format '{{index .RepoDigests 0}}' "$registry/document-verification:$tag" > /workspace/document-image.txt
+  for image in vendor-onboarding document-verification; do
+    docker tag "$registry/$image:$tag" "$registry/$image:cache"
+    docker push "$registry/$image:cache"
+  done
 fi

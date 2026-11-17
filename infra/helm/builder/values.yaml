@@ -7,6 +7,7 @@ serviceAccountName: vendor-onboarding
 webReplicas: 2
 workerReplicas: 1
 commitSha: ''
+migrationsHash: ''
 documentService:
   certificateRlmProvider: gemini
   image: vendor-document-verification:local

@@ -58,6 +58,9 @@ No secret payloads are written to logs or build artifacts.
 
 Prisma migrations run in a bounded Job with a native Kubernetes SQL proxy sidecar
 that exits when the migration completes. There is no automatic production seeding.
+The Job is skipped when a hash of `packages/prisma/postgresql/migrations` equals the
+`vendor-onboarding/migrations` annotation on the live web Deployment, which only advances after
+a successful Helm upgrade; a missing annotation or a previously failed release runs the Job.
 Schema changes must remain compatible with the previous application version.
 
 Helm 3 rolls pods with zero unavailable replicas, waits for startup/readiness, and
@@ -68,6 +71,15 @@ in memory and restored if migration, rollout or smoke validation fails. This als
 preserves live image overrides that differ from Helm history. Database migrations
 are not reversed. Automatic rollback is unavailable if the entire build is forcibly
 terminated; its abandoned Lease becomes reclaimable after expiry and terminal status.
+
+## Build speed
+
+The deploy step runs `scripts/ci/deploy-tools.sh run`, which starts a prebuilt image
+(`deploy-tools:<Dockerfile hash>` in Artifact Registry) carrying gcloud, kubectl and Helm 3.
+`deploy-tools.sh build` publishes it only when that tag is missing, so editing
+`infra/docker/deploy/Dockerfile` rebuilds it once. Application images use the `:cache` tags
+pushed by the last deploy build for `--cache-from`; validation builds only read them.
+The builder image bakes ClamAV signatures dated by the `SIGNATURE_DATE` build argument.
 
 ## Operations
 
