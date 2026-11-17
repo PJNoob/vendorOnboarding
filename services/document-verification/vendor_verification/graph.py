@@ -96,6 +96,25 @@ def matches(field: str, declared: str, observed: str) -> bool:
 COUNTRY_KINDS = {'REGISTRATION'}
 
 
+FIELD_LABELS = {'legal_name': 'legal name', 'registry_id': 'registry ID', 'tax_id': 'tax ID', 'vat_id': 'VAT ID'}
+KIND_LABELS = {'BANK': 'Bank letter', 'CERTIFICATE': 'Certificate', 'OWNERSHIP': 'Ownership declaration',
+               'REGISTRATION': 'Registration document', 'TAX': 'Tax document'}
+MASKED_FIELDS = {'account', 'tax_id', 'vat_id'}
+
+
+def conflict_message(field_name: str, candidates: list[Evidence], by_id: dict[str, Document]) -> str:
+    """Name each differing value and where it appears; financial identifiers show only their last 4 characters."""
+    shown: dict[str, list[str]] = {}
+    for item in candidates:
+        value = f'ending {item.value[-4:]}' if field_name in MASKED_FIELDS else f'"{item.value}"'
+        kind = by_id[item.documentId].kind
+        place = f'{KIND_LABELS.get(kind, kind)}, page {item.page}'
+        if place not in shown.setdefault(value, []):
+            shown[value].append(place)
+    parts = [f'{value} ({"; ".join(places)})' for value, places in shown.items()]
+    return f'Conflicting {FIELD_LABELS.get(field_name, field_name)} values: ' + ' vs '.join(parts) + '.'
+
+
 def supported(document: Document, field) -> bool:
     page = next((p for p in document.pages if p.page == field.page), None)
     if not page or field.quote not in page.text:
@@ -173,7 +192,7 @@ def build_graph(extractor: Extractor):
                     continue
                 candidates = [e for e in evidence if e.field == field_name]
                 if len({normalized(e.field, e.value) for e in candidates}) > 1:
-                    reasons.append(f'Conflicting {field_name} values appear in the submitted evidence.')
+                    reasons.append(conflict_message(field_name, candidates, by_id))
             if rule == 'CERTIFICATE_SCOPE':
                 for item in relevant:
                     if item.field != 'expires_on':

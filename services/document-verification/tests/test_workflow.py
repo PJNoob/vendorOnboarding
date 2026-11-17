@@ -104,7 +104,20 @@ def test_address_variations_require_review():
     source = provider()
     source.fields['registration'].append(field('address', '1 Main Street'))
     source.fields['bank'].append(field('address', '1 Main St'))
-    assert run(payload, source).findings[0].result == 'REVIEW'
+    finding = run(payload, source).findings[0]
+    assert finding.result == 'REVIEW'
+    assert finding.message == ('Conflicting address values: "1 Main Street" (Registration document, page 1) '
+                               'vs "1 Main St" (Bank letter, page 1).')
+
+
+def test_conflicting_account_numbers_are_masked():
+    payload = request()
+    payload['documents'][0]['pages'][0]['text'] += ' 99998888'
+    source = provider()
+    source.fields['registration'].append(field('account', '99998888'))
+    message = run(payload, source).findings[1].message
+    assert 'ending 8888 (Registration document, page 1) vs ending 4567 (Bank letter, page 1)' in message
+    assert '9999' not in message
 
 
 def test_missing_required_document_requires_review():
