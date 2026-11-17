@@ -4,6 +4,8 @@ import { test } from 'node:test'
 import type { DocumentKind } from '@neo/prisma'
 import { TaxIds } from '@neo/schemas'
 
+import { Commands } from './Commands'
+import { ReviewService } from './ReviewService'
 import { type Evidence, Verification } from './Verification'
 
 const docs = (entries: [DocumentKind, Evidence[]][]) => new Map(entries)
@@ -66,19 +68,20 @@ test('correct and unreadable documents do not trigger the document-type check', 
   const finding = Verification.documentTypes(docs([
     ['BANK', [page('bank', 'First National Bank confirms account holder Acme Ltd, account number 12345678, SWIFT FNBAUS33.')]],
     ['OWNERSHIP', [page('own', 'Acme Ltd is owned 100% by Acme Holdings Ltd, its sole shareholder and parent company.')]],
+    ['TAX', [page('tax', 'Federal Tax Authority. Tax Registration Certificate. TRN 100123456700003.')]],
     ['REGISTRATION', [page('reg', '')]], // unreadable pages are handled by the extraction review, not here
   ]))
   assert.deepEqual([finding.result, finding.code, finding.message], ['PASS', 'MATCHED', ''])
 })
 
-const country = (overrides: { bank?: string; company?: string; owners?: string[]; policy?: string[]; row?: string } = {}) => ({
+const country = (overrides: { bank?: string; company?: string; owners?: string[]; policy?: string[]; row?: string; vendor?: string } = {}) => ({
   policy: { bannedCountries: overrides.policy, documents: [], rules: [] },
   row: { country: overrides.row ?? 'US' },
   snapshot: {
-    bankProfile: { country: overrides.bank ?? 'US' }, companyProfile: { country: overrides.company ?? 'US' },
+    bankProfile: { country: overrides.bank ?? 'US' }, companyProfile: { country: overrides.company ?? overrides.row ?? 'US' },
     ownershipEdge_submission: [{ ownedEntityKey: 'vendor', ownerEntityKey: 'owner', percentage: 60 }],
     ownershipEntity_submission: [
-      { country: 'US', entityKey: 'vendor', isVendor: true, legalName: 'Vendor Ltd' },
+      { country: overrides.vendor ?? overrides.row ?? 'US', entityKey: 'vendor', isVendor: true, legalName: 'Vendor Ltd' },
       ...(overrides.owners ?? []).map((code) => ({ country: code, entityKey: 'owner', isVendor: false, legalName: 'Owner Ltd' })),
     ],
   },
@@ -110,4 +113,43 @@ test('adverse screening reviews hits and provider failures but passes clean resu
   assert.equal((await Verification.adverse(entity, serp(async () => []), false)).result, 'PASS')
   assert.equal((await Verification.adverse(entity, { configured: false } as never, false)).code, 'SCREENING_UNAVAILABLE')
   assert.equal((await Verification.adverse(entity, { configured: false } as never, true)).source, 'FIXTURE')
+})
+
+test('the vendor country must be the same in the application, company profile and ownership declaration', () => {
+  const ownership = Verification.countryRestriction(country({ row: 'AE', vendor: 'US' }))
+  assert.deepEqual([ownership.result, ownership.code], ['FAIL', 'COUNTRY_MISMATCH'])
+  assert.match(ownership.message, /your company in the ownership declaration \(US\) does not match the application country \(AE\)/)
+  const company = Verification.countryRestriction(country({ company: 'IN', row: 'AE' }))
+  assert.deepEqual([company.result, company.code], ['FAIL', 'COUNTRY_MISMATCH'])
+  assert.match(company.message, /the company profile \(IN\)/)
+  // A bank abroad is legitimate; only the vendor's own country must agree.
+  assert.equal(Verification.countryRestriction(country({ bank: 'GB', row: 'AE' })).result, 'PASS')
+  // A banned vendor country in the ownership declaration is still a ban, not just a mismatch.
+  assert.equal(Verification.countryRestriction(country({ vendor: 'KP' })).code, 'COUNTRY_BANNED')
+})
+
+test('non-US tax identifiers must appear in the tax evidence, not only be well formed', () => {
+  const profile = { formType: 'OTHER_REVIEW', vatRegistered: true }
+  const evidence = [page('tax', 'GST registration certificate GSTIN 27AAPFU0939F1ZV. PAN AAPFU0939F')]
+  assert.equal(Verification.tax('IN', profile, 'AAPFU0939F', '27AAPFU0939F1ZV', evidence).ok, true)
+  const pan = Verification.tax('IN', profile, 'AAAPL1234C', '27AAPFU0939F1ZV', evidence)
+  assert.deepEqual([pan.ok, pan.code], [false, 'TAX_MISMATCH'])
+  const abn = Verification.tax('AU', { formType: 'OTHER_REVIEW', vatRegistered: false }, '51824753556', '',
+    [page('tax', 'ABN registration details for Acme Pty Ltd')])
+  assert.deepEqual([abn.ok, abn.code], [false, 'TAX_MISMATCH'])
+})
+
+test('every check the worker computes is recorded and required for approval', () => {
+  // The worker drops findings whose rule is not in Commands.rules(policy); a check missing here is silently lost.
+  const rules = Commands.rules({ rules: [...ReviewService.RULES] })
+  for (const rule of ['ADVERSE_SCREENING', 'BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'COUNTRY_RESTRICTION', 'DOCUMENT_TYPE',
+    'ENTITY_CONSISTENCY', 'OWNERSHIP_SCREENING', 'TAX_PROFILE']) assert.ok(rules.includes(rule), rule)
+  assert.ok(Commands.rules({ rules: ['BANK_BENEFICIARY'] }).includes('DOCUMENT_TYPE'))
+})
+
+test('a UAE commercial licence is accepted as registration evidence', () => {
+  const finding = Verification.documentTypes(docs([
+    ['REGISTRATION', [page('reg', 'Dubai Economy and Tourism. Commercial Licence. Licence No: DED-884213. Legal form: LLC.')]],
+  ]))
+  assert.equal(finding.result, 'PASS')
 })

@@ -50,7 +50,7 @@ export class Verification {
     OWNERSHIP: { expected: 'an ownership declaration listing each owner and percentage', noun: 'an ownership declaration',
       pattern: /\b(owner\w*|shareholder\w*|shareholding|beneficial|equity|parent|subsidiar\w*)\b|%|\bper\s?cent\b/i },
     REGISTRATION: { expected: 'the company registration or incorporation certificate', noun: 'a company registration document',
-      pattern: /\b(registration|registered|registry|register|incorporat\w*|company\s+(number|no)|trade\s+licen[cs]e|articles\s+of|formation)\b/i },
+      pattern: /\b(registration|registered|registry|register|incorporat\w*|company\s+(number|no)|(trade|commercial|business)\s+licen[cs]e|licen[cs]e\s+(number|no)|articles\s+of|formation)\b/i },
     TAX: { expected: 'the tax registration certificate or tax form (for example a W-9 or VAT certificate)', noun: 'a tax document',
       pattern: /\b(tax\w*|w-?9|w-?8\w*|vat|trn|gstin?|ein|pan|tin|irs|revenue)\b/i },
   }
@@ -98,10 +98,11 @@ export class Verification {
   static tax(country: string, profile: { formType: string; vatRegistered: boolean }, taxId: string, vat: string, tax: Evidence[]) {
     const problem = TaxIds.problem(country, { taxId, vatRegistered: profile.vatRegistered, vatTrn: vat })
     if (problem) return { code: 'TAX_FORMAT_INVALID', message: problem, ok: false }
+    // Every identifier the supplier declares (EIN, PAN, ABN, BN, UEN, VAT/TRN, GSTIN) must appear in the tax evidence.
     const ok = country === 'US'
       ? profile.formType === 'W9' && Boolean(taxId) && Verification.has(taxId, tax)
-      : profile.formType === 'OTHER_REVIEW' && !profile.vatRegistered ||
-        profile.vatRegistered && Boolean(vat) && Verification.has(vat, tax)
+      : (!taxId || Verification.has(taxId, tax)) && (profile.formType === 'OTHER_REVIEW' && !profile.vatRegistered ||
+        profile.vatRegistered && Boolean(vat) && Verification.has(vat, tax))
     return { code: 'TAX_MISMATCH', message: 'Correct the tax details and provide matching tax evidence.', ok }
   }
 
@@ -187,21 +188,34 @@ export class Verification {
     return true
   }
 
-  /** Fails when the supplier or its bank is in a banned country; sends owners in banned countries to review. */
+  /**
+   * Fails when the supplier or its bank is in a banned country; sends owners in banned countries to review.
+   * Also requires the vendor's own country to be the same in the case, company profile and ownership
+   * declaration, because screening searches by that country.
+   */
   static countryRestriction({ policy, row, snapshot }: Current): Finding {
     const banned = new Set(policy.bannedCountries ?? Values.BANNED_COUNTRIES)
     const base = { evidence: [] as Evidence[], rule: 'COUNTRY_RESTRICTION', source: 'MANUAL' } as const
-    const own = [
-      ['case', row.country], ['company', snapshot.companyProfile?.country], ['bank', snapshot.bankProfile?.country],
-    ].filter((item): item is [string, string] => typeof item[1] === 'string' && banned.has(item[1]))
+    const vendor = snapshot.ownershipEntity_submission.find((item) => item.isVendor)
+    const declared: [string, string | undefined][] = [
+      ['case', row.country], ['company', snapshot.companyProfile?.country], ['ownership', vendor?.country],
+    ]
+    const own = [...declared, ['bank', snapshot.bankProfile?.country]]
+      .filter((item): item is [string, string] => typeof item[1] === 'string' && banned.has(item[1]))
     const owners = snapshot.ownershipEntity_submission.filter((item) => !item.isVendor && banned.has(item.country))
+    const conflicting = declared.filter(([, country]) => country && country !== row.country)
     const trace = {
       banned: [...banned].sort(),
+      declared: Object.fromEntries(declared.filter(([, country]) => country)),
       owners: owners.map((item) => ({ country: item.country, name: item.legalName })),
       supplier: own.map(([where, country]) => ({ country, where })),
     }
     if (own.length) {
       return { ...base, code: 'COUNTRY_BANNED', message: `The supplier or its bank is in a banned country (${[...new Set(own.map(([, country]) => country))].join(', ')}).`, result: 'FAIL', trace }
+    }
+    if (conflicting.length) {
+      const where = conflicting.map(([place, country]) => `${place === 'ownership' ? 'your company in the ownership declaration' : `the ${place} profile`} (${country})`).join(' and ')
+      return { ...base, code: 'COUNTRY_MISMATCH', message: `The country of ${where} does not match the application country (${row.country}). Correct the country so every section names the same country.`, result: 'FAIL', trace }
     }
     if (owners.length) {
       return { ...base, code: 'OWNER_COUNTRY_BANNED', message: '', result: 'REVIEW', trace }

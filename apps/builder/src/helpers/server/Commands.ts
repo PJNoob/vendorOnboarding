@@ -21,7 +21,7 @@ export class Commands {
     rules: z.array(z.string().min(1)).min(1),
   })
   // These checks run for every case, including cases created under policies published before they existed.
-  static readonly MANDATORY_RULES = ['ADVERSE_SCREENING', 'COUNTRY_RESTRICTION'] as const
+  static readonly MANDATORY_RULES = ['ADVERSE_SCREENING', 'COUNTRY_RESTRICTION', 'DOCUMENT_TYPE'] as const
   static readonly REPLAY_DAYS = 7
 
   static rules(policy: { rules: string[] }) {
