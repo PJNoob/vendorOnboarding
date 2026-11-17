@@ -34,7 +34,7 @@ const FIELD_LABELS: Record<string, string> = {
   vat_id: 'VAT ID',
 }
 
-const DOCUMENT_LABELS: Record<string, string> = {
+export const DOCUMENT_LABELS: Record<string, string> = {
   BANK: 'Bank evidence',
   CERTIFICATE: 'Certificate',
   OWNERSHIP: 'Ownership declaration',

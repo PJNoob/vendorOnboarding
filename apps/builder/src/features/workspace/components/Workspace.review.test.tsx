@@ -6,6 +6,7 @@ import type { Output } from '@neo/schemas'
 import { SupplierDetails } from './SupplierDetails'
 import { Workspace } from './Workspace'
 import { VerificationReport } from './VerificationReport'
+import { ReviewIssues } from './ReviewIssues'
 
 const summary = { caseId: 'case', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), number: 1,
   revision: 4, name: 'QA Vendor', requestedSite: 'Boston laboratory', status: 'REJECTED' as const,
@@ -157,4 +158,32 @@ test('a correction draft retains the requested changes and can be resent to revi
   assert.match(html, /Resend for review/)
   assert.match(html, /Upload a bank letter with the correct beneficiary/)
   assert.doesNotMatch(html, /Submit for review/)
+})
+
+
+test('issues with the same code identify their checks and show the appropriate evidence and actions', () => {
+  const detail = supplierDetail('PENDING')
+  detail.issues = [
+    { id: 'bank', code: 'DOCUMENT_REVIEW_REQUIRED', checkRule: 'BANK_BENEFICIARY', owner: 'REVIEWER',
+      message: 'The declared legal_name needs verification against BANK evidence.' },
+    { id: 'tax', code: 'DOCUMENT_REVIEW_REQUIRED', checkRule: 'TAX_PROFILE', owner: 'REVIEWER',
+      message: 'The declared vat_id needs verification against TAX evidence.' },
+    { id: 'legacy', code: 'OWNERSHIP_INCOMPLETE', owner: 'REVIEWER', message: 'Provide the complete ownership declaration.' },
+  ]
+  detail.checks = [{ rule: 'BANK_BENEFICIARY', code: 'DOCUMENT_REVIEW_REQUIRED', result: 'REVIEW', source: 'LIVE',
+    evidence: [{ documentId: 'bank', field: 'legal_name', page: 2 }] }]
+  const render = (role: 'ADMIN' | 'BUYER') => renderToStaticMarkup(createElement(ReviewIssues, {
+    detail, role, busy: false, onResolve: () => {},
+  }))
+  const admin = render('ADMIN')
+  assert.match(admin, /Bank beneficiary and account/)
+  assert.match(admin, /Tax registration/)
+  assert.match(admin, /Ownership declaration/)
+  assert.match(admin, /declared legal name needs verification against bank evidence/)
+  assert.match(admin, /Bank evidence<small> · Page 2/)
+  assert.match(admin, /Other uploaded PDFs/)
+  assert.match(admin, /href="#request-corrections"/)
+  assert.doesNotMatch(admin, /DOCUMENT_REVIEW_REQUIRED|OWNERSHIP_INCOMPLETE/)
+  assert.match(admin, /Resolve issue/)
+  assert.doesNotMatch(render('BUYER'), /Resolve issue/)
 })

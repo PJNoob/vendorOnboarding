@@ -9,6 +9,7 @@ import { ApiClient } from '@/lib/trpc'
 import { Icon } from './Icon'
 import { SupplierDetails } from './SupplierDetails'
 import { VerificationReport } from './VerificationReport'
+import { ReviewIssues } from './ReviewIssues'
 import { OwnershipFields, QualificationFields } from './ProfileFields'
 import Head from 'next/head'
 
@@ -261,7 +262,6 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
     const invitation = this.object(detail.values.invitation)
     const managing = role === 'ADMIN' || role === 'BUYER'
     const canReview = role === 'ADMIN' || role === 'REVIEWER'
-    const canResolveHolds = role === 'ADMIN' || role === 'COMPLIANCE'
     return <>
       {managing && ['DRAFT', 'INVITED'].includes(detail.case.status) && this.form('Reissue invitation', async () => {
         await this.api().invitations.reissue.mutate(version)
@@ -286,17 +286,6 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
           await this.refresh()
         }, <><label>Outcome<select name="outcome"><option>APPROVE</option><option>REJECT</option></select></label>
           <label>Decision reason<textarea name="rationale" minLength={10} placeholder="Explain the evidence and specific reasons for approval or rejection." required /></label></>)}
-        {detail.issues.filter((issue) => issue.owner === 'COMPLIANCE' ? canResolveHolds : canReview).map((issue) =>
-          this.form('Resolve issue', async (form) => {
-            const resolution = { ...input, evidenceDocumentIds: form.getAll('document').map(String), issueId: issue.id, rationale: String(form.get('rationale')) }
-            if (issue.owner === 'COMPLIANCE') await this.api().compliance.resolve.mutate({ ...resolution, disposition: form.get('disposition') === 'CONFIRMED' ? 'CONFIRMED' : 'CLEARED' })
-            else await this.api().reviews.resolveIssue.mutate(resolution)
-            await this.open(version.caseId)
-          }, <><p>{issue.code}</p>
-            {issue.owner === 'COMPLIANCE' && <label>Disposition<select name="disposition"><option>CONFIRMED</option><option>CLEARED</option></select></label>}
-            <label>Supporting documents<select multiple name="document" required>{detail.documents.filter((doc) => doc.status === 'CLEAN')
-              .map((doc) => <option key={doc.id} value={doc.id}>{doc.kind} {doc.id}</option>)}</select></label>
-            <label>Rationale<textarea name="rationale" required /></label></>, issue.id))}
       </>}
       {role === 'ADMIN' && ['SUBMITTED', 'PENDING'].includes(detail.case.status) && this.form('Reprocess documents', async () => {
         await this.api().work.reprocess.mutate({ caseId: detail.case.caseId, submissionId: detail.submissionId, expectedCaseRevision: detail.case.revision, idempotencyKey: crypto.randomUUID() })
@@ -314,6 +303,23 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         this.setState({ history: result.items })
       }, <ul>{this.state.history.map((event) => <li key={event.id}>{event.at} · {event.action}</li>)}</ul>)}
     </>
+  }
+
+  private resolveIssue(detail: Detail, issue: Detail['issues'][number], event: FormEvent<HTMLFormElement>) {
+    return this.command(async (form) => {
+      const evidenceDocumentIds = form.getAll('document').map(String)
+      if (!evidenceDocumentIds.length) throw new Error('Select at least one supporting PDF.')
+      const version = this.version(detail)
+      const resolution = { ...version, submissionId: detail.submissionId, evidenceDocumentIds,
+        issueId: issue.id, rationale: String(form.get('rationale')) }
+      if (issue.owner === 'COMPLIANCE') {
+        await this.api().compliance.resolve.mutate({ ...resolution, disposition: form.get('disposition') === 'CONFIRMED' ? 'CONFIRMED' : 'CLEARED' })
+      } else {
+        await this.api().reviews.resolveIssue.mutate(resolution)
+      }
+      await this.open(version.caseId)
+      return issue.owner === 'COMPLIANCE' ? 'Screening disposition recorded.' : 'Issue resolved.'
+    }, event)
   }
 
   private requestChanges(detail: Detail) {
@@ -553,7 +559,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
           <p>{submittedProfile ? 'Read-only copy of the details you submitted.' : 'Follow progress and see what needs to happen next.'}</p></div><span className={`status status-${Workspace.supplierStatusClass(detail.case)}`}><i />{Workspace.supplierStatus(detail.case, !role)}</span></div>
           <ol className="stages" aria-label="Verification progress" aria-live="polite">{detail.run.stages.map((stage, index) => <li key={stage.name}><span className="stage-number">{index + 1}</span><div>{stage.name}<strong>{Workspace.label(stage.state)}</strong></div></li>)}</ol>
           {(role || submittedProfile) && <SupplierDetails detail={detail} supplier={!role} />}
-          {detail.issues.length > 0 && <div className="issues"><h3>Needs attention</h3>{detail.issues.map((issue) => <p key={issue.id}>{issue.message || Workspace.label(issue.code)}</p>)}</div>}
+          {!role && detail.issues.length > 0 && <div className="issues"><h3>Needs attention</h3>{detail.issues.map((issue) => <p key={issue.id}>{issue.message || Workspace.label(issue.code)}</p>)}</div>}
           {role && !detail.verificationReport && detail.case.status === 'DRAFT' && <p className="muted">AI verification starts after the supplier submits the application.</p>}
           {role && !detail.verificationReport && detail.case.status === 'SUBMITTED' && <p className="muted">AI verification status: {detail.run.stages.find((stage) => stage.name === 'Checks')?.state ?? 'Waiting'}.</p>}
           {detail.verificationReport && <VerificationReport report={detail.verificationReport} documents={detail.documents} />}
@@ -561,8 +567,10 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
             <h3>Corrections requested on the previous submission</h3>
             <ul>{detail.previousCorrectionInstructions.map((message) => <li key={message}>{message}</li>)}</ul>
           </section>}
+          {role && detail.issues.length > 0 && <ReviewIssues detail={detail} role={role} busy={this.state.busy}
+            onResolve={(issue, event) => this.resolveIssue(detail, issue, event)} />}
           {detail.case.status === 'PENDING' && (role === 'ADMIN' || role === 'BUYER' || role === 'REVIEWER') &&
-            this.requestChanges(detail)}
+            <div id="request-corrections">{this.requestChanges(detail)}</div>}
           {detail.certificateScopeReview && <details className="check-details">
             <summary>Certificate scope suggestions</summary>
             {detail.certificateScopeReview.status === 'unavailable' && <p>Certificate evidence suggestions are unavailable.</p>}
@@ -578,7 +586,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
           {detail.case.status === 'INVITED' && detail.case.invitationDelivery === 'INVALID' && <p role="alert">Incorrect supplier credentials. Enter the correct supplier email.</p>}
           {detail.case.status === 'INVITED' && detail.case.invitationDelivery === 'VERIFICATION_FAILED' && <p role="alert">Email verification failed. No invitation was sent. Check the verification service configuration and retry.</p>}
           {detail.case.status === 'INVITED' && ['QUEUED', 'CHECKING'].includes(detail.case.invitationDelivery ?? '') && <p role="status">Your supplier is queued for email verification. One supplier is checked every 35 seconds; the invitation email is sent only after a successful check.</p>}
-          <div className="document-section"><h3>Supporting documents <span className="count-label">{detail.documents.length}</span></h3>{!detail.documents.length && <p className="muted">Documents will appear here as your supplier completes their application.</p>}{detail.documents.map((doc) => <div className="document-row" key={doc.id}><Icon name="document" /><strong>{Workspace.label(doc.kind)}</strong><span className="document-status">{Workspace.label(doc.status)}</span>{doc.status === 'CLEAN' && (!role || role === 'ADMIN' || role === 'REVIEWER' || role === 'COMPLIANCE' && doc.kind === 'OWNERSHIP') && <button className="button-secondary" onClick={() => this.api().documents.download.mutate({ caseId: detail.case.caseId, documentId: doc.id }).then((result) => window.location.assign(result.url), this.report.bind(this))}>Download</button>}{!role && detail.case.status === 'DRAFT' && !detail.case.submittedAt && <button className="text-button" onClick={() => this.api().documents.remove.mutate({ ...this.draft(detail), documentId: doc.id }).then(() => this.open(detail.case.caseId)).then(undefined, this.report.bind(this))}>Remove</button>}</div>)}</div>
+          <div className="document-section" id="supporting-documents"><h3>Supporting documents <span className="count-label">{detail.documents.length}</span></h3>{!detail.documents.length && <p className="muted">Documents will appear here as your supplier completes their application.</p>}{detail.documents.map((doc) => <div className="document-row" key={doc.id}><Icon name="document" /><strong>{Workspace.label(doc.kind)}</strong><span className="document-status">{Workspace.label(doc.status)}</span>{doc.status === 'CLEAN' && (!role || role === 'ADMIN' || role === 'REVIEWER' || role === 'COMPLIANCE' && doc.kind === 'OWNERSHIP') && <button className="button-secondary" onClick={() => this.api().documents.download.mutate({ caseId: detail.case.caseId, documentId: doc.id }).then((result) => window.location.assign(result.url), this.report.bind(this))}>Download</button>}{!role && detail.case.status === 'DRAFT' && !detail.case.submittedAt && <button className="text-button" onClick={() => this.api().documents.remove.mutate({ ...this.draft(detail), documentId: doc.id }).then(() => this.open(detail.case.caseId)).then(undefined, this.report.bind(this))}>Remove</button>}</div>)}</div>
           {this.form('Refresh case', async () => this.open(detail.case.caseId), null)}{role ? this.viewBuyer(detail, role) : this.viewSupplier(detail)}
         </section>}
         <footer className="page-footer"><span>Harbor BioLabs</span><span>Trusted partnerships. Thoughtful progress.</span></footer>
