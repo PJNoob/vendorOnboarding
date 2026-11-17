@@ -1153,6 +1153,12 @@ tbody tr:hover {
   margin-top:8px;
 }
 
+.issues li {
+  font-size:14px;
+  line-height:1.5;
+  margin-top:8px;
+}
+
 .check-details {
   padding:20px 23px;
   border-top:1px solid var(--line);
