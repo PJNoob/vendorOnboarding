@@ -9,6 +9,16 @@ type Issue = Detail['issues'][number]
 type Role = Output<'identity'>['memberships'][number]['role']
 
 const RULES: Record<string, { title: string; document: string; guidance: string }> = {
+  ADVERSE_SCREENING: {
+    title: 'Public ban or sanction search',
+    document: '',
+    guidance: 'Open the cited pages and confirm whether they refer to this vendor or owner. If they do, escalate to compliance; if not, resolve the issue.',
+  },
+  COUNTRY_RESTRICTION: {
+    title: 'Banned country',
+    document: '',
+    guidance: 'Check the country of the supplier, its bank and its owners against the banned-country list and escalate to compliance if one is listed.',
+  },
   BANK_BENEFICIARY: {
     title: 'Bank beneficiary and account',
     document: 'BANK',
@@ -51,9 +61,15 @@ const RULE_BY_ISSUE_CODE: Record<string, string> = {
   TAX_MISMATCH: 'TAX_PROFILE',
   TAX_FORMAT_INVALID: 'TAX_PROFILE',
   DOCUMENT_TYPE_MISMATCH: 'DOCUMENT_TYPE',
+  ADVERSE_MEDIA_MATCH: 'ADVERSE_SCREENING',
+  SCREENING_UNAVAILABLE: 'ADVERSE_SCREENING',
+  COUNTRY_BANNED: 'COUNTRY_RESTRICTION',
+  OWNER_COUNTRY_BANNED: 'COUNTRY_RESTRICTION',
 }
 
 const HOLD_REASONS: Record<string, string> = {
+  ADVERSE_MEDIA_MATCH: 'A web search found pages linking the vendor or an owner to a ban, sanction or debarment. The trace lists the pages.',
+  OWNER_COUNTRY_BANNED: 'An owner in the ownership declaration is registered in a banned country.',
   OWNERSHIP_POSSIBLE_MATCH: 'The screening provider found a possible match for an entity in the ownership declaration.',
   OWNERSHIP_BLOCKED_CHAIN: 'Ownership screening identified a blocked party in the ownership chain.',
 }

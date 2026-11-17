@@ -4,6 +4,8 @@ export { TaxIds, type TaxIdKind, type TaxIdResult } from './TaxIds'
 
 export class Values {
   static readonly ACTIVITIES = ['CALIBRATION'] as const
+  // Countries under comprehensive sanctions. A tenant policy may override this list.
+  static readonly BANNED_COUNTRIES = ['CU', 'IR', 'KP', 'SY'] as const
   static readonly BUYER_ROLES = ['ADMIN', 'AUDITOR', 'BUYER', 'COMPLIANCE', 'REVIEWER'] as const
   static readonly CASE_STATES = ['APPROVED', 'DRAFT', 'INVITED', 'PENDING', 'REJECTED', 'SUBMITTED'] as const
   static readonly DECISIONS = ['APPROVE', 'REJECT'] as const

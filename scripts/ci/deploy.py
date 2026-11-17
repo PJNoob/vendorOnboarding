@@ -230,6 +230,11 @@ class Deployment:
                                f'--project={self.project}'], private=True)
             values = json.loads(raw)
             validate_secret(values)
+            # The web-search screening key lives in its own secret; without it the check routes cases to manual review.
+            code, serp_key = self.run(['gcloud', 'secrets', 'versions', 'access', 'latest', '--secret=vendor-serp-api-key',
+                                       f'--project={self.project}'], private=True, allow_failure=True)
+            if code == 0 and serp_key.strip():
+                values['SERP_API_KEY'] = serp_key.decode().strip()
             # Database credentials, auth secrets and PII key rotate through a separate process.
             for key in ('DATABASE_URL', 'REDIS_URL', 'BETTER_AUTH_SECRET', 'PII_KEY'):
                 if values.get(key) != old_values.get(key):

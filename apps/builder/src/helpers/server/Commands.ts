@@ -17,9 +17,16 @@ export class Commands {
   static readonly DAY_MS = 86_400_000
   static readonly POLICY = z.strictObject({
     documents: z.array(z.enum(Values.DOCUMENTS)).min(1),
+    bannedCountries: z.array(z.string().regex(/^[A-Z]{2}$/)).optional(),
     rules: z.array(z.string().min(1)).min(1),
   })
+  // These checks run for every case, including cases created under policies published before they existed.
+  static readonly MANDATORY_RULES = ['ADVERSE_SCREENING', 'COUNTRY_RESTRICTION'] as const
   static readonly REPLAY_DAYS = 7
+
+  static rules(policy: { rules: string[] }) {
+    return [...new Set([...policy.rules, ...Commands.MANDATORY_RULES])]
+  }
 
   static async audit(actor: Actor, action: string, entityId: string, tx: TransactionClient, metadata: Prisma.InputJsonObject = {}) {
     await AuditEventRepository.create({ data: {

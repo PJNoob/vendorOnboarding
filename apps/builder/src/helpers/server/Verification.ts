@@ -2,11 +2,12 @@ import { z } from 'zod'
 
 import { env } from '@neo/env'
 import { Prisma, type CheckResult, type DocumentKind, type SourceMode } from '@neo/prisma'
-import { TaxIds } from '@neo/schemas'
+import { TaxIds, Values } from '@neo/schemas'
 
 import { Commands } from './Commands'
 import { screenOfac } from './OfacScreening'
 import { Secrets } from './Security'
+import { SerpScreening, serpScreening } from './SerpScreening'
 
 export interface Evidence {
   documentId: string
@@ -28,6 +29,8 @@ type Entity = Current['snapshot']['ownershipEntity_submission'][number]
 
 export class Verification {
   static readonly BLOCKED_THRESHOLD = 50
+  static readonly ADVERSE_OWNER_PERCENT = 25
+  static readonly ADVERSE_SEARCH_LIMIT = 5
   static readonly DATASET = 'training-fixture-v1'
   static readonly TIMEOUT_MS = 15_000
 
@@ -184,6 +187,59 @@ export class Verification {
     return true
   }
 
+  /** Fails when the supplier or its bank is in a banned country; sends owners in banned countries to review. */
+  static countryRestriction({ policy, row, snapshot }: Current): Finding {
+    const banned = new Set(policy.bannedCountries ?? Values.BANNED_COUNTRIES)
+    const base = { evidence: [] as Evidence[], rule: 'COUNTRY_RESTRICTION', source: 'MANUAL' } as const
+    const own = [
+      ['case', row.country], ['company', snapshot.companyProfile?.country], ['bank', snapshot.bankProfile?.country],
+    ].filter((item): item is [string, string] => typeof item[1] === 'string' && banned.has(item[1]))
+    const owners = snapshot.ownershipEntity_submission.filter((item) => !item.isVendor && banned.has(item.country))
+    const trace = {
+      banned: [...banned].sort(),
+      owners: owners.map((item) => ({ country: item.country, name: item.legalName })),
+      supplier: own.map(([where, country]) => ({ country, where })),
+    }
+    if (own.length) {
+      return { ...base, code: 'COUNTRY_BANNED', message: `The supplier or its bank is in a banned country (${[...new Set(own.map(([, country]) => country))].join(', ')}).`, result: 'FAIL', trace }
+    }
+    if (owners.length) {
+      return { ...base, code: 'OWNER_COUNTRY_BANNED', message: '', result: 'REVIEW', trace }
+    }
+    return { ...base, code: 'MATCHED', message: '', result: 'PASS', trace }
+  }
+
+  /** Searches the web for bans, sanctions or debarment naming the vendor or its larger owners. */
+  static async adverse({ snapshot }: Current, serp: SerpScreening = serpScreening, demo = env.DEMO_SCREENING === 'true'): Promise<Finding> {
+    const base = { evidence: [] as Evidence[], rule: 'ADVERSE_SCREENING', source: demo ? 'FIXTURE' : 'LIVE' } as const
+    if (demo) return { ...base, code: 'MATCHED', message: '', result: 'PASS', trace: { dataset: Verification.DATASET } }
+    const entities = snapshot.ownershipEntity_submission
+    const edges = snapshot.ownershipEdge_submission
+    const vendor = entities.find((item) => item.isVendor)
+    const profile = snapshot.companyProfile
+    const subjects = [
+      ...(vendor ? [{ country: vendor.country, key: vendor.entityKey, name: vendor.legalName }]
+        : profile ? [{ country: profile.country, key: 'vendor', name: profile.legalName }] : []),
+      ...entities.filter((item) => !item.isVendor && edges.some((edge) => edge.ownerEntityKey === item.entityKey &&
+        new Prisma.Decimal(edge.percentage).gte(Verification.ADVERSE_OWNER_PERCENT)))
+        .map((item) => ({ country: item.country, key: item.entityKey, name: item.legalName })),
+    ].slice(0, Verification.ADVERSE_SEARCH_LIMIT)
+    if (!subjects.length || !serp.configured) {
+      return { ...base, code: 'SCREENING_UNAVAILABLE', message: 'Web screening is not configured; search for bans manually.', result: 'REVIEW' }
+    }
+    const results = await Promise.allSettled(subjects.map((subject) => serp.search(subject)))
+    const hits = results.flatMap((result, index) => result.status === 'fulfilled' && result.value.length
+      ? [{ entity: subjects[index].name, results: result.value }] : [])
+    const trace = { checked: subjects.map((item) => item.name), hits, provider: 'searchapi.io' }
+    if (hits.length) {
+      return { ...base, code: 'ADVERSE_MEDIA_MATCH', message: '', result: 'REVIEW', trace }
+    }
+    if (results.some((result) => result.status === 'rejected')) {
+      return { ...base, code: 'SCREENING_UNAVAILABLE', message: 'Web screening could not be completed; search for bans manually.', result: 'REVIEW', trace }
+    }
+    return { ...base, code: 'MATCHED', message: '', result: 'PASS', trace }
+  }
+
   static certificateStandards(current: Current) {
     const { row, snapshot } = current
     return [...new Set(snapshot.qualification_submission.filter((item) =>
@@ -217,8 +273,10 @@ export class Verification {
       Verification.local('TAX_PROFILE', taxResult.ok, tax, taxResult.code, taxResult.message),
       Verification.documentTypes(documents),
     ]
-    const ownership = await Verification.ownership(current, documents.get('OWNERSHIP') ?? [])
-    return [...findings, ownership]
+    const [adverse, ownership] = await Promise.all([
+      Verification.adverse(current), Verification.ownership(current, documents.get('OWNERSHIP') ?? []),
+    ])
+    return [...findings, Verification.countryRestriction(current), adverse, ownership]
   }
 
   static local(rule: string, valid: boolean, evidence: Evidence[], code: string, message: string): Finding {

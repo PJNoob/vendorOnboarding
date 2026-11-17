@@ -56,6 +56,7 @@ export const env = createEnv({
     RESEND_API_KEY: z.string().min(1),
     MAILTESTER_NINJA_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     REST_COUNTRIES_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
+    SERP_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).optional()),
     SCREENING_PROVIDER: z.enum(['http', 'ofac']).default('http'),
     SCREENING_TOKEN: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
     SCREENING_URL: z.preprocess((value) => value === '' ? undefined : value, z.url().optional()),
