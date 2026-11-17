@@ -16,7 +16,8 @@ export class DocumentProcessor {
   static readonly BUFFER = 1_000_000
   static readonly FORMAT = '%PDF-'
   static readonly TIMEOUT = 55_000
-  static readonly VERSION = 'document-ai-v1'
+  static readonly LEGACY_VERSION = 'document-ai-v1'
+  static readonly VERSION = 'gemini-ocr-v1'
 
   private static async bytes(bucket: string, key: string, generation: string) {
     const stream = ObjectStore.STORAGE.bucket(bucket).file(key, { generation }).createReadStream()

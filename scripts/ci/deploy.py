@@ -45,8 +45,7 @@ def secret_values(resource):
 
 def validate_secret(values):
     required = {'DATABASE_URL', 'REDIS_URL', 'APP_URL', 'BETTER_AUTH_SECRET', 'PII_KEY',
-                'DOCUMENT_SERVICE_TOKEN', 'GOOGLE_CLOUD_PROJECT', 'DOCUMENT_AI_LOCATION',
-                'DOCUMENT_AI_PROCESSOR_ID', 'GEMINI_MODEL'}
+                'DOCUMENT_SERVICE_TOKEN', 'GOOGLE_CLOUD_PROJECT', 'GEMINI_MODEL'}
     if required - values.keys() or any(not isinstance(v, str) or '\x00' in v for v in values.values()):
         raise RuntimeError('Production configuration is missing required string settings')
     if len(values['DOCUMENT_SERVICE_TOKEN']) < 32:

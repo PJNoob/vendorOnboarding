@@ -119,8 +119,11 @@ export class Worker {
   private async evidence(current: Current) {
     const documents = new Map<DocumentKind, Evidence[]>()
     for (const document of current.snapshot.document_submission.filter((item) => item.status === 'CLEAN')) {
+      const where = { documentId: document.id, tenantId: document.tenantId }
       const extracted = await ExtractionRepository.findFirst({
-        where: { documentId: document.id, extractorVersion: DocumentProcessor.VERSION, tenantId: document.tenantId },
+        where: { ...where, extractorVersion: DocumentProcessor.VERSION },
+      }) ?? await ExtractionRepository.findFirst({
+        where: { ...where, extractorVersion: DocumentProcessor.LEGACY_VERSION },
       })
       if (!extracted) throw new Error('current document extraction is unavailable; reprocess this submission')
       const [bytes] = await ObjectStore.STORAGE.bucket(env.GCS_CLEAN_BUCKET).file(extracted.outputRef).download()
