@@ -22,7 +22,7 @@ function current() {
       checkRun_submission: [], document_submission: [], workItem_submission: [], qualification_submission: [], ownershipEdge_submission: [],
       ownershipEntity_submission: [{ entityKey: 'vendor', legalName: 'Acme', country: 'US', isVendor: true }],
       decision_submission: [{ outcome: 'REJECT', rationale: 'Bank account 999988887777 does not match declared 123456789012.', createdAt: now, reviewer: { name: 'Independent Reviewer' } }],
-      issue_submission: [{ id: 'issue', code: 'BANK_MISMATCH', ownerRole: 'REVIEWER', supplierMessage: 'Bank details do not match the evidence.', resolvedAt: null }],
+      issue_submission: [{ id: 'issue', code: 'BANK_MISMATCH', checkRule: 'BANK_BENEFICIARY', ownerRole: 'REVIEWER', supplierMessage: 'Bank details do not match the evidence.', resolvedAt: null }],
     },
   }
 }
@@ -43,6 +43,7 @@ for (const role of ['ADMIN', 'REVIEWER', 'BUYER', 'AUDITOR']) test(`${role} sees
   const detail = outputs.detail.parse(await Queries.detail(actor, 'case'))
   assert.equal(detail.case.supplierEmail, 'supplier@example.test')
   assert.equal(detail.case.requestedSite, 'Boston laboratory')
+  assert.equal(detail.issues[0].checkRule, 'BANK_BENEFICIARY')
   assert.equal(detail.case.requesterName, 'Procurement Requester')
   assert.match(detail.decisions[0].rationale!, /does not match declared/)
   assert.equal(detail.decisions[0].reviewerName, 'Independent Reviewer')

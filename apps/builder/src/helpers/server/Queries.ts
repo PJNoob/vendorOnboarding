@@ -148,6 +148,7 @@ export class Queries {
       draftRevision: snapshot.draftRevision,
       issues: snapshot.issue_submission.filter((issue) => !issue.resolvedAt && (buyer || issue.supplierMessage))
         .map((issue) => ({
+          ...(buyer && issue.checkRule && (issue.ownerRole !== 'COMPLIANCE' || privileged) ? { checkRule: issue.checkRule } : {}),
           code: issue.ownerRole === 'COMPLIANCE' && !privileged ? 'COMPLIANCE_REVIEW' : issue.code,
           id: issue.id, message: issue.supplierMessage ?? '', owner: issue.ownerRole,
         })),

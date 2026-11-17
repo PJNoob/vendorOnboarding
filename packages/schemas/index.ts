@@ -113,7 +113,7 @@ const summary = z.strictObject({
   caseId: id, createdAt: date, name: z.string(), number: z.int(), requestedSite: text,
   revision: z.int(), status: z.enum(Values.CASE_STATES), updatedAt: date,
 })
-const issue = z.strictObject({ code: text, id, message: z.string(), owner: text })
+const issue = z.strictObject({ checkRule: text.optional(), code: text, id, message: z.string(), owner: text })
 const stage = z.strictObject({ name: text, state: text })
 const run = z.strictObject({ stages: z.array(stage) })
 export const certificateScopeSuggestion = z.strictObject({
