@@ -126,6 +126,16 @@ Files: `D1_REGISTRATION…`, `D2_BANK…`, `D3_TAX…`, `D4_CERTIFICATE…` and 
 
 Rejection reason to paste: `Ultimate parent is a sanctioned entity via a 60%/80% ownership chain.`
 
+### Why the registration ID `FIXTURE-BLOCKED-001` is required
+
+Leave Volkov's registration ID blank and the case is **not** flagged: ownership screening returns "clear".
+
+- **Demo mode (`DEMO_SCREENING=true`).** Screening uses a synthetic sanctions fixture, not names. Only an entity whose registration ID is exactly `FIXTURE-BLOCKED-001` counts as sanctioned. Without that ID there is nothing to match.
+- **Live mode (`DEMO_SCREENING=false`, `SCREENING_PROVIDER=ofac`).** Every entity's name is checked against the US Treasury OFAC sanctions (SDN) list. Only an exact name match, after ignoring case, accents and punctuation, is flagged, and it is flagged as a *possible* match for compliance to review. "Volkov Maritime Trading Group" is fictional and not on the list, so it is not flagged. The web ban search (SearchApi.io) also covers Volkov, because it holds 25% or more of a company in the chain, but a fictional name returns no results.
+- **What stays the same in both modes:** once an entity is sanctioned, the blocked status passes up the chain. Any company in which sanctioned owners together hold 50% or more is treated as blocked too. That is what turns Volkov's 60% of Harbor Crest, and Harbor Crest's 80% of Blue Harbor Labs, into a compliance hold on the vendor.
+
+The demo uses a synthetic sanctioned entity on purpose: the run is predictable, and no real company is named as sanctioned. Production runs the same ownership-chain logic against the real OFAC list.
+
 ---
 
 ## How these were checked
