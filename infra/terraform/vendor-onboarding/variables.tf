@@ -15,6 +15,19 @@ variable "organization_id" {
   default     = "55981582187"
 }
 
+variable "quarantine_upload_origins" {
+  description = "Exact browser origins allowed to upload PDFs using signed PUT URLs."
+  type        = list(string)
+  default     = ["http://localhost:3000"]
+
+  validation {
+    condition = length(var.quarantine_upload_origins) > 0 && alltrue([
+      for origin in var.quarantine_upload_origins : can(regex("^https?://[A-Za-z0-9.-]+(:[0-9]+)?$", origin))
+    ])
+    error_message = "Provide at least one exact HTTP or HTTPS origin with an optional port and no wildcard, path, query, or fragment."
+  }
+}
+
 variable "region" {
   description = "Region for vendor onboarding resources."
   type        = string

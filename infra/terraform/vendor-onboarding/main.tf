@@ -64,6 +64,17 @@ resource "google_storage_bucket" "documents" {
   versioning {
     enabled = true
   }
+
+  dynamic "cors" {
+    for_each = each.key == "quarantine" ? [var.quarantine_upload_origins] : []
+    content {
+      max_age_seconds = 3600
+      method          = ["PUT"]
+      origin          = cors.value
+      response_header = ["Content-Type", "x-goog-if-generation-match", "x-goog-content-length-range"]
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
   }

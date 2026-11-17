@@ -79,7 +79,7 @@ docker build -f infra/docker/builder/Dockerfile -t "$IMAGE" .
 docker push "$IMAGE"
 ```
 
-Create the `redis-ca` Kubernetes Secret with key `ca.pem` from the Redis server CA using a protected local file, then remove that local copy according to your organization's handling rules. Create the database user and run the Prisma migration and seed as authenticated jobs before enabling traffic; those jobs still need implementation and verification. Configure the quarantine bucket's CORS for the exact `APP_URL` and required upload headers.
+Create the `redis-ca` Kubernetes Secret with key `ca.pem` from the Redis server CA using a protected local file, then remove that local copy according to your organization's handling rules. Create the database user and run the Prisma migration and seed as authenticated jobs before enabling traffic; those jobs still need implementation and verification. Set `quarantine_upload_origins` to the exact application origin before planning the Terraform changes. For the existing production deployment, use `-var-file=production.tfvars`.
 
 ```sh
 helm upgrade --install vendor-onboarding infra/helm/builder \
