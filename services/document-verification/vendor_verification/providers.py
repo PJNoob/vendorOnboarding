@@ -52,7 +52,11 @@ class GoogleProviders:
                     'containing each value and its original page number. Omit absent fields. '
                     'Use legal_name for the vendor business name, account for the beneficiary account, '
                     'registry_id for business registration number, tax_id for income tax identifier, '
-                    'vat_id for VAT identifier. Preserve source date strings in expires_on; use ISO '
+                    'vat_id for VAT identifier. '
+                    'Use site for the laboratory or service location (city, address or facility) the certificate covers, '
+                    'activity for the accredited service or scope description, '
+                    'standard for the accreditation standard such as ISO/IEC 17025. '
+                    'Preserve source date strings in expires_on; use ISO '
                     'only if it is printed that way. Never extract the bank name or owners as the vendor.'),
                 temperature=0,
                 response_mime_type='application/json', response_schema=self.response_schema(),
