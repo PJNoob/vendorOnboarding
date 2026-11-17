@@ -6,7 +6,9 @@ from typing import Protocol, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from .models import Comparison, Document, Evidence, Extraction, Finding, Report, VerificationRequest
+from .models import (Comparison, Document, Evidence, Extraction, FieldName, Finding, Report, Resolution,
+                     VerificationRequest)
+from .resolver import resolve_conflicts as run_resolution_agent
 
 
 class Extractor(Protocol):
@@ -16,6 +18,10 @@ class Extractor(Protocol):
 class State(TypedDict, total=False):
     request: VerificationRequest
     extracted: list[Extraction]
+    evidence: list[Evidence]
+    unresolved: set[str]
+    conflicts: dict[FieldName, list[Evidence]]
+    resolutions: dict[FieldName, Resolution]
     findings: list[Finding]
     report: Report
 
@@ -40,6 +46,7 @@ FIELD_RULES = {
     'expires_on': {'CERTIFICATE_SCOPE'},
 }
 # Scope, standard, and expiry can legitimately vary between certificates/annexes.
+# A differing value here is not a failure by itself: the resolution agent decides whether it is one.
 CROSS_FIELDS = {'legal_name', 'registry_id', 'account', 'tax_id', 'vat_id', 'address'}
 
 
@@ -139,7 +146,7 @@ def build_graph(extractor: Extractor):
 
         return {'extracted': await asyncio.gather(*(one(d) for d in state['request'].documents))}
 
-    def compare(state: State):
+    def cross_verify(state: State):
         request = state['request']
         evidence: list[Evidence] = []
         unresolved: set[str] = set()
@@ -156,6 +163,21 @@ def build_graph(extractor: Extractor):
                     continue
                 evidence.append(Evidence(documentId=document.documentId, page=field.page,
                                          field=field.field, value=field.value, quote=field.quote))
+        conflicts = {}
+        for field_name in sorted(CROSS_FIELDS):
+            candidates = [e for e in evidence if e.field == field_name]
+            if len({normalized(e.field, e.value) for e in candidates}) > 1:
+                conflicts[field_name] = candidates
+        return {'evidence': evidence, 'unresolved': unresolved, 'conflicts': conflicts}
+
+    async def resolve_conflicts(state: State):
+        request = state['request']
+        return {'resolutions': await run_resolution_agent(
+            extractor, state['conflicts'], {d.documentId: d for d in request.documents}, request.expected)}
+
+    def review(state: State):
+        request = state['request']
+        evidence, unresolved = state['evidence'], state['unresolved']
         by_id = {d.documentId: d for d in request.documents}
         missing = {kind for kind in request.requiredKinds if not any(
             d.kind == kind and d.pages and all(p.text.strip() for p in d.pages) for d in request.documents)}
@@ -187,12 +209,15 @@ def build_graph(extractor: Extractor):
                 status = 'MATCH' if matched else 'MISMATCH' if candidates else 'MISSING_EVIDENCE'
                 comparisons.append(Comparison(field=expected.field, kind=expected.kind, declared=expected.value,
                                               observed=list(dict.fromkeys(e.value for e in candidates)), status=status))
-            for field_name in sorted(CROSS_FIELDS):
+            resolutions: list[Resolution] = []
+            for field_name in sorted(state['conflicts']):
                 if rule not in FIELD_RULES[field_name]:
                     continue
-                candidates = [e for e in evidence if e.field == field_name]
-                if len({normalized(e.field, e.value) for e in candidates}) > 1:
-                    reasons.append(conflict_message(field_name, candidates, by_id))
+                resolution = state['resolutions'][field_name]
+                if resolution.verdict == 'UNRESOLVED':
+                    reasons.append(f'{conflict_message(field_name, state["conflicts"][field_name], by_id)} {resolution.reason}')
+                else:
+                    resolutions.append(resolution)
             if rule == 'CERTIFICATE_SCOPE':
                 for item in relevant:
                     if item.field != 'expires_on':
@@ -207,21 +232,21 @@ def build_graph(extractor: Extractor):
             # Include both sides of conflicts, including documents outside a rule's main kind.
             findings.append(Finding(rule=rule, result='REVIEW' if reasons else 'PASS',
                                     code='DOCUMENT_REVIEW_REQUIRED' if reasons else 'DOCUMENTS_CONSISTENT',
-                                    message=' '.join(dict.fromkeys(reasons)) if reasons else 'Document fields are consistent.',
-                                    evidence=relevant, comparisons=comparisons))
-        return {'findings': findings}
-
-    def report(state: State):
-        return {'report': Report(submissionId=state['request'].submissionId,
-                                 recommendation='NEEDS_REVIEW' if any(f.result != 'PASS' for f in state['findings']) else 'CONSISTENT',
-                                 findings=state['findings'])}
+                                    message=' '.join(dict.fromkeys(reasons)) if reasons else
+                                    ' '.join(['Document fields are consistent.', *(r.reason for r in resolutions)]),
+                                    evidence=relevant, comparisons=comparisons, resolutions=resolutions))
+        return {'report': Report(submissionId=request.submissionId,
+                                 recommendation='NEEDS_REVIEW' if any(f.result != 'PASS' for f in findings) else 'CONSISTENT',
+                                 findings=findings)}
 
     graph = StateGraph(State)
     graph.add_node('extract_fields', extract)
-    graph.add_node('cross_verify', compare)
-    graph.add_node('review_report', report)
+    graph.add_node('cross_verify', cross_verify)
+    graph.add_node('resolve_conflicts', resolve_conflicts)
+    graph.add_node('review_report', review)
     graph.add_edge(START, 'extract_fields')
     graph.add_edge('extract_fields', 'cross_verify')
-    graph.add_edge('cross_verify', 'review_report')
+    graph.add_edge('cross_verify', 'resolve_conflicts')
+    graph.add_edge('resolve_conflicts', 'review_report')
     graph.add_edge('review_report', END)
     return graph.compile()

@@ -68,7 +68,7 @@ export class DocumentVerification {
       new Set(report.findings.map((item) => item.rule)).size !== rules.length ||
       report.findings.some((item) => !rules.includes(item.rule))) throw new Error('document service returned an invalid report')
     const allPages = [...pages.values()].flat()
-    if (report.findings.some((finding) => finding.evidence.some((evidence) => !allPages.some((page) =>
+    if (report.findings.some((finding) => [...finding.evidence, ...(finding.resolutions ?? []).flatMap((item) => item.evidence)].some((evidence) => !allPages.some((page) =>
       page.documentId === evidence.documentId && page.page === evidence.page && page.text.includes(evidence.quote))))) {
       throw new Error('document service returned unsupported evidence')
     }
