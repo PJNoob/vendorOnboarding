@@ -30,6 +30,6 @@ export class ContextFactory {
       verified: session.user.emailVerified,
     }
     if (acceptEnrollment) await TeamService.accept(actor)
-    return { actor, origin: req.headers.origin }
+    return { actor: await Security.classify(actor), origin: req.headers.origin }
   }
 }

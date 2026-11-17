@@ -52,6 +52,13 @@ export class Security {
     return member
   }
 
+  // A verified email has one role however it signed in: any active membership makes it a buyer, otherwise a supplier.
+  static async classify(actor: Actor): Promise<Actor> {
+    if (!actor.verified || (actor.channel !== Security.BUYER && actor.channel !== Security.SUPPLIER)) return actor
+    const member = await MembershipRepository.findFirst({ select: { id: true }, where: { active: true, userId: actor.id } })
+    return { ...actor, channel: member ? Security.BUYER : Security.SUPPLIER }
+  }
+
   static fresh(actor: Actor) {
     if (Date.now() - actor.createdAt.getTime() > Security.FRESH_MS) {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'sign in again to perform this action' })
