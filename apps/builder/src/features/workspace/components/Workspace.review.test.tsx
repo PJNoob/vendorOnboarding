@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { Output } from '@neo/schemas'
 import { SupplierDetails } from './SupplierDetails'
 import { Workspace } from './Workspace'
+import { VerificationReport } from './VerificationReport'
 
 const summary = { caseId: 'case', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), number: 1,
   revision: 4, name: 'QA Vendor', requestedSite: 'Boston laboratory', status: 'REJECTED' as const,
@@ -121,4 +122,39 @@ test('the review queue includes applications undergoing automated verification',
   const html = renderToStaticMarkup(createElement(ReviewQueue, { countries: [] }))
   assert.match(html, /Awaiting automated checks/)
   assert.doesNotMatch(html, /Draft only|All suppliers/)
+})
+
+
+test('verification presents a chart, structured comparisons and quoted evidence from older reports', () => {
+  const report: NonNullable<Output<'detail'>['verificationReport']> = {
+    submissionId: 'submission', version: 'langgraph-gemini-v1', recommendation: 'NEEDS_REVIEW',
+    findings: [
+      { rule: 'ENTITY_CONSISTENCY', result: 'PASS', code: 'DOCUMENTS_CONSISTENT',
+        message: 'Document fields are consistent.', evidence: [
+          { documentId: 'registration', page: 2, field: 'legal_name', value: 'QA Vendor', quote: 'Legal name: QA Vendor' },
+        ] },
+      { rule: 'BANK_BENEFICIARY', result: 'REVIEW', code: 'DOCUMENT_REVIEW_REQUIRED',
+        message: 'The declared account needs verification.', evidence: [],
+        comparisons: [
+          { field: 'account', kind: 'BANK', declared: '1234', observed: ['4567'], status: 'MISMATCH' },
+          { field: 'legal_name', kind: 'BANK', declared: 'QA Vendor', observed: [], status: 'MISSING_EVIDENCE' },
+        ] },
+    ],
+  }
+  const html = renderToStaticMarkup(createElement(VerificationReport, { report, documents: [
+    { id: 'registration', kind: 'REGISTRATION', status: 'CLEAN' },
+  ] }))
+  for (const text of ['1 matching, 1 requiring review', 'Verification findings', 'Supplier declared',
+    'Mismatch', 'Evidence missing', 'Registration, page 2', 'Legal name: QA Vendor',
+    'POST /v1/verify', 'get_screening_evidence']) assert.ok(html.includes(text), text)
+})
+
+test('a correction draft retains the requested changes and can be resent to review', () => {
+  const detail = supplierDetail('DRAFT')
+  detail.case.number = 2
+  detail.previousCorrectionInstructions = ['Upload a bank letter with the correct beneficiary.']
+  const html = renderSupplier(detail)
+  assert.match(html, /Resend for review/)
+  assert.match(html, /Upload a bank letter with the correct beneficiary/)
+  assert.doesNotMatch(html, /Submit for review/)
 })

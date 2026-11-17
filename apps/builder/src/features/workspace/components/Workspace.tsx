@@ -8,6 +8,7 @@ import { inputs, type Country, type Input, type Output, Values } from '@neo/sche
 import { ApiClient } from '@/lib/trpc'
 import { Icon } from './Icon'
 import { SupplierDetails } from './SupplierDetails'
+import { VerificationReport } from './VerificationReport'
 import { OwnershipFields, QualificationFields } from './ProfileFields'
 import Head from 'next/head'
 
@@ -278,10 +279,6 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         }, <p>{String(this.object(entry).name || 'Supplier')} · {String(this.object(entry).email || userId)}</p>, userId)
       })}
       {detail.case.status === 'PENDING' && <>
-        {(role === 'BUYER' || canReview) && this.form('Request changes', async (form) => {
-          await this.api().cases.requestChanges.mutate({ ...input, message: String(form.get('message')) })
-          await this.open(version.caseId)
-        }, <label>Supplier instructions<textarea name="message" required /></label>)}
         {canReview && this.form('Record decision', async (form) => {
           const outcome = form.get('outcome') === 'APPROVE' ? 'APPROVE' : 'REJECT'
           await this.api().reviews.decide.mutate({ ...input, outcome, rationale: String(form.get('rationale')) })
@@ -319,6 +316,15 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
     </>
   }
 
+  private requestChanges(detail: Detail) {
+    return this.form('Request corrections', async (form) => {
+      const version = this.version(detail)
+      await this.api().cases.requestChanges.mutate({ ...version, submissionId: detail.submissionId, message: String(form.get('message')) })
+      await this.open(version.caseId)
+      return 'Corrections requested from the supplier.'
+    }, <label>What should the supplier correct?<textarea name="message" required /></label>)
+  }
+
   private viewSupplier(detail: Detail) {
     if (detail.case.status === 'PENDING' && detail.issues.some((issue) => issue.message)) {
       return this.form('Start correction', async () => {
@@ -328,6 +334,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
     }
     if (detail.case.status !== 'DRAFT' || detail.case.submittedAt) return null
     const { values } = detail
+    const revised = detail.case.number > 1
     const owners = this.object(values.ownership).entities
     const steps = [
       { label: 'Company', saved: Boolean(values.company) },
@@ -382,12 +389,12 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
         await this.open(detail.case.caseId)
       }, <><label>Evidence type<select aria-label="Evidence type" name="kind">{detail.required.map((kind) => <option key={kind} value={kind}>{Workspace.label(kind)}</option>)}</select></label>
         <p className="muted">Upload a PDF up to 10 MB for each required evidence type. Files are checked before they can be reviewed.</p><label>PDF document<input accept="application/pdf" name="file" required type="file" /></label></>)}
-      {this.form('Submit for review', async (form) => {
+      {this.form(revised ? 'Resend for review' : 'Submit for review', async (form) => {
         if (form.get('attested') !== 'on') throw new Error('confirm the supplier attestation')
         await this.api().supplier.submit.mutate({ ...this.draft(detail), attested: true })
         await this.open(detail.case.caseId)
         await this.refresh()
-        return 'Submitted for review.'
+        return revised ? 'Corrected application sent for review.' : 'Submitted for review.'
       }, <>{missing.length > 0 && <p>Required before submission: {missing.join(', ')}.</p>}
         <label className="checkbox-label"><input name="attested" required type="checkbox" /> I confirm these details are accurate and authorized.</label></>)}
       <div className="step-controls"><button className="button-secondary" disabled={this.state.supplierStep === 0} onClick={() => this.setState({ supplierStep: this.state.supplierStep - 1 })}>Previous step</button><span>Step {this.state.supplierStep + 1} of 7</span><button disabled={this.state.supplierStep === 6} onClick={() => this.setState({ supplierStep: this.state.supplierStep + 1 })}>Next step <Icon name="arrow" /></button></div>
@@ -549,7 +556,13 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
           {detail.issues.length > 0 && <div className="issues"><h3>Needs attention</h3>{detail.issues.map((issue) => <p key={issue.id}>{issue.message || Workspace.label(issue.code)}</p>)}</div>}
           {role && !detail.verificationReport && detail.case.status === 'DRAFT' && <p className="muted">AI verification starts after the supplier submits the application.</p>}
           {role && !detail.verificationReport && detail.case.status === 'SUBMITTED' && <p className="muted">AI verification status: {detail.run.stages.find((stage) => stage.name === 'Checks')?.state ?? 'Waiting'}.</p>}
-          {detail.verificationReport && <details className="check-details"><summary>Cross-document verification — {Workspace.label(detail.verificationReport.recommendation)}</summary><p>Consistency findings support the final decision by an Admin or Reviewer.</p>{detail.verificationReport.findings.map((finding) => <div key={finding.rule}><h3>{Workspace.label(finding.rule)} · {Workspace.label(finding.result)}</h3><p>{finding.message}</p>{finding.evidence.map((item, index) => <p key={`${item.documentId}-${item.field}-${index}`}><strong>{Workspace.label(item.field)}: {item.value}</strong> · {Workspace.label(detail.documents.find((document) => document.id === item.documentId)?.kind ?? item.documentId)}, page {item.page}<br /><q>{item.quote}</q></p>)}</div>)}</details>}
+          {detail.verificationReport && <VerificationReport report={detail.verificationReport} documents={detail.documents} />}
+          {!!detail.previousCorrectionInstructions?.length && <section className="issues">
+            <h3>Corrections requested on the previous submission</h3>
+            <ul>{detail.previousCorrectionInstructions.map((message) => <li key={message}>{message}</li>)}</ul>
+          </section>}
+          {detail.case.status === 'PENDING' && (role === 'ADMIN' || role === 'BUYER' || role === 'REVIEWER') &&
+            this.requestChanges(detail)}
           {detail.certificateScopeReview && <details className="check-details">
             <summary>Certificate scope suggestions</summary>
             {detail.certificateScopeReview.status === 'unavailable' && <p>Certificate evidence suggestions are unavailable.</p>}

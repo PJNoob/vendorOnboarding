@@ -2119,3 +2119,123 @@ summary {
 
 .supplier-email { min-width:190px; white-space:normal; }
 .supplier-panel .table-scroll table { min-width:1040px; }
+
+.verification-report > summary,
+.verification-chart-legend,
+.verification-chart-legend span {
+  display:flex;
+  align-items:center;
+  gap:0.75rem;
+}
+
+.verification-report > summary {
+  justify-content:space-between;
+  font-size:1rem;
+}
+
+.verification-report > summary::before {
+  content:'▸';
+}
+
+.verification-report[open] > summary::before {
+  content:'▾';
+}
+
+.verification-report > summary > .verification-result {
+  margin-left:auto;
+}
+
+.verification-chart {
+  margin:1.25rem 0;
+}
+
+.verification-chart figcaption,
+.verification-table caption {
+  margin-bottom:0.5rem;
+  font-weight:600;
+  text-align:left;
+}
+
+.verification-chart-track {
+  display:flex;
+  height:0.65rem;
+  overflow:hidden;
+  border-radius:1rem;
+}
+
+.verification-chart-track .match,
+.verification-chart-legend .match {
+  background:#3b927a;
+}
+
+.verification-chart-track .review,
+.verification-chart-legend .review {
+  background:#c5822a;
+}
+
+.verification-chart-legend {
+  flex-wrap:wrap;
+  margin-top:0.5rem;
+  font-size:0.8rem;
+}
+
+.verification-chart-legend i {
+  width:0.6rem;
+  height:0.6rem;
+  border-radius:50%;
+}
+
+.verification-result {
+  display:inline-block;
+  padding:0.2rem 0.55rem;
+  border-radius:1rem;
+  font-size:0.75rem;
+  font-weight:600;
+  white-space:nowrap;
+}
+
+.verification-result.match {
+  color:#145140;
+  background:#e0f2e9;
+}
+
+.verification-result.mismatch {
+  color:#862c2c;
+  background:#fce7e7;
+}
+
+.verification-result.review {
+  color:#78470f;
+  background:#fff0d8;
+}
+
+.verification-table {
+  margin:0.75rem 0 1rem;
+}
+
+.verification-table table {
+  min-width:30rem;
+  white-space:normal;
+}
+
+.verification-table th,
+.verification-table td,
+.verification-table td:last-child {
+  width:auto;
+  padding:0.6rem 0.75rem;
+  vertical-align:top;
+  font-size:0.82rem;
+  overflow-wrap:anywhere;
+}
+
+.verification-table tbody th {
+  font-weight:600;
+  color:inherit;
+  background:transparent;
+  border-top:1px solid var(--line);
+}
+
+.verification-evidence {
+  border-top:1px solid var(--line);
+  padding:0.75rem 0;
+}

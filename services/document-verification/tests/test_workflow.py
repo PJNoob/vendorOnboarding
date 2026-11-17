@@ -75,6 +75,22 @@ def test_conflicting_vendor_names_include_both_documents():
     assert {e.documentId for e in report.findings[0].evidence} == {'bank', 'registration'}
 
 
+def test_report_distinguishes_matches_mismatches_and_missing_evidence():
+    payload = request()
+    payload['expected'][1]['value'] = 'AB123'
+    payload['expected'][3]['value'] = '9999'
+    source = provider()
+    source.fields['bank'] = [field('account', '4567')]
+    identity, bank = run(payload, source).findings
+
+    registry = identity.comparisons[1]
+    assert (registry.status, registry.declared, registry.observed) == ('MATCH', 'AB123', ['AB-123'])
+    assert bank.comparisons[0].status == 'MISSING_EVIDENCE'
+    assert bank.comparisons[0].observed == []
+    assert (bank.comparisons[1].status, bank.comparisons[1].observed) == ('MISMATCH', ['4567'])
+    assert bank.result == 'REVIEW'
+
+
 def test_identifier_formatting_is_normalized():
     payload = request()
     payload['expected'][1]['value'] = 'AB123'

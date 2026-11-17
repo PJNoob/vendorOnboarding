@@ -1,6 +1,6 @@
 import {
   AuditEventRepository, BaseRepository, DocumentRepository, InvitationRepository, MembershipRepository, OnboardingCaseRepository,
-  CaseAccessRepository, NotificationRepository,
+  CaseAccessRepository, NotificationRepository, SubmissionRepository,
 } from '@neo/prisma/repositories'
 import { type Input, type Output, Values } from '@neo/schemas'
 
@@ -114,10 +114,20 @@ export class Queries {
       include: { user: { select: { name: true, email: true } } },
       where: { caseId, revokedAt: null, tenantId: scoped.tenantId },
     }) : []
+    const previous = snapshot.number > 1 ? await SubmissionRepository.findFirst({
+      where: { caseId, tenantId: scoped.tenantId, number: snapshot.number - 1, submittedAt: { not: null } },
+      select: { issue_submission: {
+        where: { ownerRole: { not: 'COMPLIANCE' }, supplierMessage: { not: null } },
+        select: { supplierMessage: true },
+      } },
+    }) : undefined
+    const previousCorrections = [...new Set(previous?.issue_submission.flatMap(({ supplierMessage }) =>
+      supplierMessage ? [supplierMessage] : []) ?? [])]
     const scopeReview = privileged ? await ReviewEvidence.scopeSuggestion(current) : undefined
     const agentReport = privileged && row.status !== 'SUBMITTED' ? await Queries.agentReport(current) : undefined
     return {
       ...(scopeReview ? { certificateScopeReview: scopeReview } : {}),
+      ...(previousCorrections.length ? { previousCorrectionInstructions: previousCorrections } : {}),
       ...(agentReport ? { verificationReport: agentReport } : {}),
       case: { ...Queries.summary(row, companyProfile?.legalName),
         supplierEmail: companyProfile?.contactEmail || (invite ? Secrets.decrypt(invite.recipientCiphertext, scoped.tenantId) : row.createdBy.email),
