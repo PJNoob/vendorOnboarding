@@ -4,11 +4,15 @@ RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 WORKDIR /workspace
 RUN chown node:node /workspace
 USER node
-# Fetching from the lockfile alone keeps the package download layer cached across source-only changes.
-COPY --chown=node:node pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm fetch --config.strict-dep-builds=false
+# Installing from the manifests alone keeps the dependency layer cached across source-only changes.
+COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --chown=node:node apps/builder/package.json apps/builder/
+COPY --chown=node:node packages/env/package.json packages/env/
+COPY --chown=node:node packages/prisma/package.json packages/prisma/
+COPY --chown=node:node packages/schemas/package.json packages/schemas/
+RUN pnpm install --frozen-lockfile
 COPY --chown=node:node . .
-RUN CI=true pnpm install --offline --frozen-lockfile --config.strict-dep-builds=false
+RUN CI=true pnpm install --offline --frozen-lockfile
 RUN pnpm --filter @neo/prisma db:generate
 RUN pnpm build
 # Last, so the daily signature refresh does not invalidate the cached dependency and build layers.
