@@ -131,6 +131,10 @@ export const verificationReport = z.strictObject({
   findings: z.array(z.strictObject({
     rule: z.enum(['BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'ENTITY_CONSISTENCY', 'TAX_PROFILE']),
     result: z.enum(['PASS', 'REVIEW']), code: text, message: z.string(),
+    comparisons: z.array(z.strictObject({
+      field: text, kind: z.enum(Values.DOCUMENTS), declared: z.string(),
+      observed: z.array(z.string()), status: z.enum(['MATCH', 'MISMATCH', 'MISSING_EVIDENCE']),
+    })).optional(),
     evidence: z.array(z.strictObject({ documentId: id, page: z.int().positive(), field: text, value: z.string(), quote: z.string() })),
   })),
 })
@@ -146,6 +150,7 @@ export const outputs = {
   }),
   detail: z.strictObject({
     certificateScopeReview: certificateScopeSuggestion.optional(),
+    previousCorrectionInstructions: z.array(z.string()).optional(),
     verificationReport: verificationReport.optional(),
     case: summary, checks: z.array(z.strictObject({
       code: text, evidence: z.array(z.strictObject({ documentId: id, field: text, page: z.int() })),

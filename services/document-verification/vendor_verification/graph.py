@@ -6,7 +6,7 @@ from typing import Protocol, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from .models import Document, Evidence, Extraction, Finding, Report, VerificationRequest
+from .models import Comparison, Document, Evidence, Extraction, Finding, Report, VerificationRequest
 
 
 class Extractor(Protocol):
@@ -102,11 +102,17 @@ def build_graph(extractor: Extractor):
                 reasons.append('Some extracted fields could not be verified against the source or have low confidence.')
             if not any(by_id[e.documentId].kind in RULE_KINDS[rule] for e in relevant):
                 reasons.append('No supported fields were extracted from the required evidence.')
+            comparisons: list[Comparison] = []
             for expected in [e for e in request.expected if e.rule == rule]:
                 candidates = [e for e in relevant if e.field == expected.field and by_id[e.documentId].kind == expected.kind]
-                if not candidates or not any(normalized(e.field, e.value) == normalized(expected.field, expected.value) for e in candidates):
+                declared = normalized(expected.field, expected.value)
+                matched = any(normalized(e.field, e.value) == declared for e in candidates)
+                if not matched:
                     reasons.append(f'The declared {expected.field} needs verification against {expected.kind} evidence.')
-            for field_name in CROSS_FIELDS:
+                status = 'MATCH' if matched else 'MISMATCH' if candidates else 'MISSING_EVIDENCE'
+                comparisons.append(Comparison(field=expected.field, kind=expected.kind, declared=expected.value,
+                                              observed=list(dict.fromkeys(e.value for e in candidates)), status=status))
+            for field_name in sorted(CROSS_FIELDS):
                 if rule not in FIELD_RULES[field_name]:
                     continue
                 candidates = [e for e in evidence if e.field == field_name]
@@ -127,7 +133,7 @@ def build_graph(extractor: Extractor):
             findings.append(Finding(rule=rule, result='REVIEW' if reasons else 'PASS',
                                     code='DOCUMENT_REVIEW_REQUIRED' if reasons else 'DOCUMENTS_CONSISTENT',
                                     message=' '.join(dict.fromkeys(reasons)) if reasons else 'Document fields are consistent.',
-                                    evidence=relevant))
+                                    evidence=relevant, comparisons=comparisons))
         return {'findings': findings}
 
     def report(state: State):

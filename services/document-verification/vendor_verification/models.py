@@ -71,17 +71,26 @@ class Evidence(StrictModel):
     quote: str
 
 
+class Comparison(StrictModel):
+    field: FieldName
+    kind: Kind
+    declared: str
+    observed: list[str]
+    status: Literal['MATCH', 'MISMATCH', 'MISSING_EVIDENCE']
+
+
 class Finding(StrictModel):
     rule: Rule
     result: Literal['PASS', 'REVIEW']
     code: str
     message: str
     evidence: list[Evidence]
+    comparisons: list[Comparison] = Field(default_factory=list)
 
 
 class Report(StrictModel):
     submissionId: str
-    version: str = 'langgraph-gemini-v1'
+    version: str = 'langgraph-gemini-v2'
     recommendation: Literal['CONSISTENT', 'NEEDS_REVIEW']
     findings: list[Finding]
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, mock, test } from 'node:test'
-import { CaseAccessRepository, InvitationRepository, NotificationRepository, OnboardingCaseRepository } from '@neo/prisma/repositories'
+import { CaseAccessRepository, InvitationRepository, NotificationRepository, OnboardingCaseRepository, SubmissionRepository } from '@neo/prisma/repositories'
 import { outputs } from '@neo/schemas'
 import { Commands } from './Commands'
 import { Queries } from './Queries'
@@ -110,4 +110,21 @@ test('only the submitting supplier can see the submitted financial identifiers',
   assert.equal(bank.account, undefined)
   assert.equal(bank.accountLast4, '9012')
   assert.equal((shared.values.tax as Record<string, unknown>).taxId, undefined)
+})
+
+
+test('a revision includes supplier correction instructions from the immediately preceding submission', async () => {
+  const value = setup('ADMIN')
+  Object.assign(value.snapshot, { number: 2 })
+  value.row.currentNumber = 2
+  const previous = mock.method(SubmissionRepository, 'findFirst', async () => ({
+    issue_submission: [
+      { supplierMessage: 'Upload a new certificate.' },
+      { supplierMessage: 'Upload a new certificate.' },
+    ],
+  }) as never)
+  const actor = { id: 'viewer', tenantId: 'tenant', channel: Security.BUYER, verified: true } as Actor
+  const detail = outputs.detail.parse(await Queries.detail(actor, 'case'))
+  assert.deepEqual(detail.previousCorrectionInstructions, ['Upload a new certificate.'])
+  assert.equal(previous.mock.callCount(), 1)
 })
