@@ -9,6 +9,7 @@ import { Commands } from './Commands'
 import { DocumentVerification } from './DocumentVerification'
 import { DocumentProcessor } from './DocumentProcessor'
 import { demoIdentity } from './DemoIdentity'
+import { issueDetail } from './IssueDetail'
 import { ObjectStore } from './Providers'
 import { localGoogleStorageEnabled } from './LocalGoogleStorage'
 import { ReviewEvidence } from './ReviewEvidence'
@@ -158,6 +159,11 @@ export class Queries {
       issues: snapshot.issue_submission.filter((issue) => !issue.resolvedAt && (buyer || issue.supplierMessage))
         .map((issue) => ({
           ...(buyer && issue.checkRule && (issue.ownerRole !== 'COMPLIANCE' || privileged) ? { checkRule: issue.checkRule } : {}),
+          ...(privileged ? (() => {
+            const check = snapshot.checkRun_submission.find((item) => item.ruleKey === issue.checkRule && item.reasonCode === issue.code)
+            const detail = check ? issueDetail(issue.code, check.evidenceJson, snapshot.ownershipEntity_submission) : undefined
+            return detail ? { detail } : {}
+          })() : {}),
           code: issue.ownerRole === 'COMPLIANCE' && !privileged ? 'COMPLIANCE_REVIEW' : issue.code,
           id: issue.id, message: issue.supplierMessage ?? '', owner: issue.ownerRole,
         })),

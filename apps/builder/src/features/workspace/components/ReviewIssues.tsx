@@ -144,7 +144,8 @@ export function ReviewIssues({ detail, role, busy, onResolve }: {
 
         return <details className="review-issue" key={issue.id} name="case-review-issue">
           <summary>
-            <span><strong>{title}</strong><span className="review-issue-reason">{message}</span></span>
+            <span><strong>{title}</strong><span className="review-issue-reason">{message}</span>
+              {issue.detail && <span className="review-issue-reason"><strong>{issue.detail}</strong></span>}</span>
             <span className="review-issue-chevron" aria-hidden="true" />
           </summary>
           <div className="review-issue-body">
