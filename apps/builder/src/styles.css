@@ -2101,13 +2101,15 @@ summary {
   margin-top:13px;
 }
 
-.submitted-profile { margin:24px 0; }
-.submitted-section { padding:22px 0; border-bottom:1px solid var(--line); }
-.submitted-section h3 { margin:0 0 16px; }
-.submitted-section .submitted-section { padding:14px 0; }
-.submitted-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px 28px; margin:0; }
-.submitted-fields dt { color:#6b7770; font-size:12px; margin-bottom:6px; }
-.submitted-fields dd { margin:0; color:#23392d; overflow-wrap:anywhere; white-space:pre-wrap; }
+.submitted-profile { margin:24px 0; display:flex; flex-direction:column; gap:20px; }
+.submitted-section { padding:28px 32px; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 2px rgba(16,24,20,.04); }
+.submitted-section h3 { margin:0 0 22px; padding-bottom:14px; border-bottom:1px solid var(--line); font-size:16px; font-weight:600; letter-spacing:-.005em; color:#1c2b22; }
+.submitted-section>p { margin:0; color:#6b7770; }
+.submitted-section .submitted-section { padding:20px 24px; margin-top:16px; background:#f8faf9; border-radius:10px; box-shadow:none; }
+.submitted-section .submitted-section h3 { font-size:14px; margin-bottom:16px; padding-bottom:10px; }
+.submitted-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:24px 40px; margin:0; }
+.submitted-fields dt { color:#6b7770; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+.submitted-fields dd { margin:0; color:#1c2b22; font-size:14px; line-height:1.45; overflow-wrap:anywhere; white-space:pre-wrap; }
 .decision-summary { border-radius:8px; padding:22px; margin-bottom:18px; }
 .decision-summary p,.decision-history p { white-space:pre-wrap; overflow-wrap:anywhere; }
 .rejected-decision { background:#fff2ef; border:1px solid #edc4ba; color:#742d22; }
@@ -2121,7 +2123,7 @@ summary {
 .request-card p { margin:8px 0; overflow-wrap:anywhere; }
 .request-card>div:last-of-type { display:flex; align-items:center; gap:12px; }
 .request-card>ul { flex-basis:100%; margin:0; color:#8b461c; }
-@media(max-width:650px) { .submitted-fields { grid-template-columns:1fr; } .request-card { display:block; } .request-card>div:last-of-type { margin-top:16px; } }
+@media(max-width:650px) { .submitted-section { padding:20px; } .submitted-fields { grid-template-columns:1fr; } .request-card { display:block; } .request-card>div:last-of-type { margin-top:16px; } }
 
 .supplier-email { min-width:190px; white-space:normal; }
 .supplier-panel .table-scroll table { min-width:1040px; }
