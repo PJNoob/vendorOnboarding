@@ -89,7 +89,7 @@ def build_graph(extractor: Extractor):
         unresolved: set[str] = set()
         for document, extracted in zip(request.documents, state['extracted'], strict=True):
             for field in extracted.fields:
-                if not supported(document, field) or field.confidence < 0.85:
+                if not supported(document, field) or field.confidence < 0.5:
                     unresolved.update(FIELD_RULES[field.field])
                     continue
                 # Ownership declarations list other entities: do not compare their names

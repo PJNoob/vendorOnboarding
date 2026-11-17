@@ -119,8 +119,16 @@ def test_unreadable_page_prevents_clean_recommendation():
     assert run(payload).recommendation == 'NEEDS_REVIEW'
 
 
+def test_source_supported_fields_at_minimum_confidence_are_accepted():
+    source = provider()
+    source.fields['registration'][0]['confidence'] = 0.5
+    finding = run(source=source).findings[0]
+    assert finding.result == 'PASS'
+    assert finding.comparisons[0].status == 'MATCH'
+
+
 def test_invented_and_low_confidence_values_require_review():
-    for change in [{'quote': 'not in the document'}, {'value': 'Invented'}, {'confidence': 0.2}, {'page': 2}]:
+    for change in [{'quote': 'not in the document'}, {'value': 'Invented'}, {'confidence': 0.49}, {'page': 2}]:
         source = provider()
         source.fields['registration'][0].update(change)
         assert run(source=source).findings[0].result == 'REVIEW'
