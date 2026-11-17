@@ -2119,11 +2119,15 @@ summary {
 .issue-count { display:inline-block; background:#fff1e8; border:1px solid #ebc9ad; border-radius:6px; padding:5px 10px; color:#8b461c; font-size:12px; }
 .request-clear { color:#37704a; font-size:12px; }
 .requester-inbox { margin:24px 0; }
-.request-card { display:flex; flex-wrap:wrap; justify-content:space-between; gap:18px; padding:20px 0; border-top:1px solid var(--line); }
-.request-card p { margin:8px 0; overflow-wrap:anywhere; }
+.request-card { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px 24px; padding:22px 23px; border-top:1px solid var(--line); }
+.request-card:last-child { border-radius:0 0 9px 9px; }
+.request-card strong { font-size:15px; color:#1c2b22; }
+.request-card p { margin:6px 0; font-size:14px; color:#3f5247; overflow-wrap:anywhere; }
+.request-card small { font-size:12px; color:#6b7770; }
 .request-card>div:last-of-type { display:flex; align-items:center; gap:12px; }
-.request-card>ul { flex-basis:100%; margin:0; color:#8b461c; }
-@media(max-width:650px) { .submitted-section { padding:20px; } .submitted-fields { grid-template-columns:1fr; } .request-card { display:block; } .request-card>div:last-of-type { margin-top:16px; } }
+.request-card>ul { flex-basis:100%; margin:0; padding:12px 16px 12px 32px; font-size:13px; line-height:1.5; background:#fff7f1; border:1px solid #f0d6c2; border-radius:8px; color:#8b461c; }
+.requester-inbox>p { margin:0; padding:20px 23px; border-top:1px solid var(--line); color:#6b7770; }
+@media(max-width:650px) { .submitted-section { padding:20px; } .submitted-fields { grid-template-columns:1fr; } .request-card { display:block; padding:20px; } .request-card>div:last-of-type { margin-top:16px; } }
 
 .supplier-email { min-width:190px; white-space:normal; }
 .supplier-panel .table-scroll table { min-width:1040px; }
