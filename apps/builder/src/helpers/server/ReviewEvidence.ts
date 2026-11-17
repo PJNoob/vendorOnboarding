@@ -32,7 +32,7 @@ const certificateReference = z.object({
 type Current = Awaited<ReturnType<typeof Commands.current>>
 
 export class ReviewEvidence {
-  static readonly ROLES = ['REVIEWER', 'COMPLIANCE'] as const
+  static readonly ROLES = ['ADMIN', 'REVIEWER', 'COMPLIANCE'] as const
 
   private static scopePrefix(current: Current) {
     return `certificate-scope/${current.row.tenantId}/${current.snapshot.id}/`

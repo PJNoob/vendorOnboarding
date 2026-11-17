@@ -82,3 +82,43 @@ test('supplier can reopen a submitted application as a read-only record througho
     assert.doesNotMatch(html, /Application steps|Save company|Upload supporting document|Submit for review|>Remove</)
   }
 })
+
+test('the supplier sees which saved steps still block submission', () => {
+  assert.match(renderSupplier(supplierDetail('DRAFT')), /Required before submission: Tax, Documents\./)
+})
+
+test('the Admin can record a decision only after verification is finished', () => {
+  function renderAdmin(status: Output<'detail'>['case']['status']) {
+    class AdminWorkspace extends Workspace {
+      constructor(props: Workspace['props']) {
+        super(props)
+        this.state = { ...this.state, loading: false, email: 'admin@example.test', tenantId: 'tenant',
+          memberships: [{ id: 'membership', tenantId: 'tenant', role: 'ADMIN' }], detail: supplierDetail(status) }
+      }
+    }
+    return renderToStaticMarkup(createElement(AdminWorkspace, { countries: [] }))
+  }
+
+  assert.match(renderAdmin('PENDING'), /Record decision/)
+  assert.doesNotMatch(renderAdmin('DRAFT'), /Record decision/)
+  const submitting = renderAdmin('SUBMITTED')
+  assert.doesNotMatch(submitting, /Record decision/)
+  assert.match(submitting, /AI verification status/)
+})
+
+test('the review queue includes applications undergoing automated verification', () => {
+  class ReviewQueue extends Workspace {
+    constructor(props: Workspace['props']) {
+      super(props)
+      this.state = { ...this.state, loading: false, email: 'admin@example.test', tenantId: 'tenant', view: 'reviews',
+        memberships: [{ id: 'membership', tenantId: 'tenant', role: 'ADMIN' }], cases: [
+          { ...summary, status: 'SUBMITTED', name: 'Awaiting automated checks' },
+          { ...summary, caseId: 'draft', status: 'DRAFT', name: 'Draft only' },
+        ] }
+    }
+  }
+
+  const html = renderToStaticMarkup(createElement(ReviewQueue, { countries: [] }))
+  assert.match(html, /Awaiting automated checks/)
+  assert.doesNotMatch(html, /Draft only|All suppliers/)
+})

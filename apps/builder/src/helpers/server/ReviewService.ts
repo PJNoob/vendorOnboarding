@@ -13,9 +13,9 @@ type Snapshot = Awaited<ReturnType<typeof Commands.current>>['snapshot']
 
 export class ReviewService {
   static readonly ADMIN = ['ADMIN'] as const
-  static readonly COMPLIANCE = ['COMPLIANCE'] as const
-  static readonly REQUESTERS = ['BUYER', 'REVIEWER'] as const
-  static readonly REVIEWERS = ['REVIEWER'] as const
+  static readonly COMPLIANCE = ['ADMIN', 'COMPLIANCE'] as const
+  static readonly REQUESTERS = ['ADMIN', 'BUYER', 'REVIEWER'] as const
+  static readonly REVIEWERS = ['ADMIN', 'REVIEWER'] as const
   static readonly RULES = ['BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'ENTITY_CONSISTENCY', 'OWNERSHIP_SCREENING', 'TAX_PROFILE'] as const
 
   private static async current(actor: Actor, input: Input<'decide'> | Input<'request'> | Input<'resolve'> | Input<'resolveHold'>, tx: TransactionClient) {
@@ -80,7 +80,10 @@ export class ReviewService {
     Security.fresh(actor)
     return Commands.execute(actor, 'reviews.decide', input, Commands.role(actor, ReviewService.REVIEWERS), async (tx) => {
       const { policy, row, snapshot } = await ReviewService.current(actor, input, tx)
-      Commands.require(row.createdById !== actor.id, 'an independent reviewer must decide this case')
+      if (row.createdById === actor.id) {
+        const membership = await Security.buyer(actor, ReviewService.REVIEWERS, tx)
+        Commands.require(membership.role === 'ADMIN', 'an independent reviewer must decide this case')
+      }
       if (input.outcome === 'APPROVE') {
         ReviewService.assertApproval(policy.rules, snapshot)
         const profile = snapshot.companyProfile
