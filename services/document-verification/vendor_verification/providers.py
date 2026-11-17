@@ -52,7 +52,10 @@ class GoogleProviders:
                     'containing each value and its original page number. Omit absent fields. '
                     'Use legal_name for the vendor business name, account for the beneficiary account, '
                     'registry_id for business registration number, tax_id for income tax identifier, '
-                    'vat_id for VAT identifier. Preserve source date strings in expires_on; use ISO '
+                    'vat_id for VAT identifier. For country, return the ISO 3166-1 alpha-2 code (for example '
+                    'US, AE, IN, GB) of the country where the vendor is registered or incorporated, only when '
+                    'the page prints that country or one of its states, provinces or emirates; quote that text. '
+                    'Preserve source date strings in expires_on; use ISO '
                     'only if it is printed that way. Never extract the bank name or owners as the vendor.'),
                 temperature=0,
                 response_mime_type='application/json', response_schema=self.response_schema(),

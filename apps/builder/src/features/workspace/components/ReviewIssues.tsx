@@ -15,9 +15,9 @@ const RULES: Record<string, { title: string; document: string; guidance: string 
     guidance: 'Open the cited pages and confirm whether they refer to this vendor or owner. If they do, escalate to compliance; if not, resolve the issue.',
   },
   COUNTRY_RESTRICTION: {
-    title: 'Banned country',
+    title: 'Country check',
     document: '',
-    guidance: 'Check the country of the supplier, its bank and its owners against the banned-country list and escalate to compliance if one is listed.',
+    guidance: 'Check that the application, company profile and ownership declaration name the same supplier country, and that the supplier, its bank and its owners are outside the banned-country list. Escalate to compliance if a banned country is listed.',
   },
   BANK_BENEFICIARY: {
     title: 'Bank beneficiary and account',
@@ -65,6 +65,7 @@ const RULE_BY_ISSUE_CODE: Record<string, string> = {
   SCREENING_UNAVAILABLE: 'ADVERSE_SCREENING',
   COUNTRY_BANNED: 'COUNTRY_RESTRICTION',
   OWNER_COUNTRY_BANNED: 'COUNTRY_RESTRICTION',
+  COUNTRY_MISMATCH: 'COUNTRY_RESTRICTION',
 }
 
 const HOLD_REASONS: Record<string, string> = {
@@ -80,6 +81,7 @@ const FIELDS: Record<string, string> = {
   account: 'account number',
   tax_id: 'tax ID',
   vat_id: 'VAT registration number',
+  country: 'country',
 }
 
 const DOCUMENT_NAMES: Record<string, string> = {

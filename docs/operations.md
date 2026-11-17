@@ -46,6 +46,10 @@ Reference: [Better Auth Google configuration](https://better-auth.com/docs/authe
 
 Two checks run on every case, whatever the tenant policy lists. `COUNTRY_RESTRICTION` fails a case when the supplier, company or bank country is banned (default CU, IR, KP, SY; a policy can set `bannedCountries`) and sends owners in banned countries to compliance. `ADVERSE_SCREENING` searches the web through SearchApi.io for bans, sanctions or debarment naming the vendor and owners holding 25% or more, and always sends hits or provider failures to a person.
 
+`COUNTRY_RESTRICTION` also fails with `COUNTRY_MISMATCH` when the application, company profile and the vendor entity in the ownership declaration name different countries; the ownership form defaults the vendor to the company country and saving a different one is refused. A bank in another country is allowed. `DOCUMENT_TYPE` (wrong file for its kind) runs on every case as well and must pass before approval. Cases verified before this rule was mandatory need to be reprocessed before they can be approved.
+
+The document service asks Gemini for the country printed on the registration document (an ISO code, with the quoted text) and `ENTITY_CONSISTENCY` goes to review when it differs from the declared country. A registration document that prints no country is not flagged.
+
 The API key lives in the Secret Manager secret `vendor-serp-api-key` (declared in Terraform, version added outside Terraform). `scripts/ci/deploy.py` copies it into the Kubernetes Secret as `SERP_API_KEY`. Without a key the check routes every case to review with `SCREENING_UNAVAILABLE`. Add a version with:
 
 ```bash

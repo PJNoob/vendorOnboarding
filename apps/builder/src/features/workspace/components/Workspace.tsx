@@ -406,7 +406,7 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
       {this.form('Save ownership', async (form) => {
         const value: unknown = JSON.parse(String(form.get('json')))
         await this.save(detail, inputs.save.shape.change.parse({ section: 'ownership', value }))
-      }, <OwnershipFields countries={this.props.countries} value={detail.values.ownership} />, `${detail.submissionId}-ownership`)}
+      }, <OwnershipFields countries={this.props.countries} defaultCountry={String(this.object(detail.values.company).country ?? 'US')} value={detail.values.ownership} />, `${detail.submissionId}-ownership`)}
       {this.form('Upload supporting document', async (form) => {
         const file = form.get('file')
         if (!(file instanceof File) || !file.size) throw new Error('Select a PDF file to continue.')

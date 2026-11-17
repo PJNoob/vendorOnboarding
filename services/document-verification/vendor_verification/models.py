@@ -3,7 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Kind = Literal['BANK', 'CERTIFICATE', 'OWNERSHIP', 'REGISTRATION', 'TAX']
 Rule = Literal['BANK_BENEFICIARY', 'CERTIFICATE_SCOPE', 'ENTITY_CONSISTENCY', 'TAX_PROFILE']
-FieldName = Literal['legal_name', 'registry_id', 'account', 'tax_id', 'vat_id', 'address', 'site', 'activity', 'standard', 'expires_on']
+FieldName = Literal['legal_name', 'registry_id', 'account', 'tax_id', 'vat_id', 'address', 'country', 'site', 'activity', 'standard', 'expires_on']
 
 
 class StrictModel(BaseModel):
@@ -90,7 +90,7 @@ class Finding(StrictModel):
 
 class Report(StrictModel):
     submissionId: str
-    version: str = 'langgraph-gemini-v2'
+    version: str = 'langgraph-gemini-v3'
     recommendation: Literal['CONSISTENT', 'NEEDS_REVIEW']
     findings: list[Finding]
 
