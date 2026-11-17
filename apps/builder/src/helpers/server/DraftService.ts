@@ -199,6 +199,11 @@ export class DraftService {
       if (input.change.section === 'company') {
         Commands.require(input.change.value.country === row.country, 'company country must match the invitation')
       }
+      if (input.change.section === 'ownership') {
+        const vendor = input.change.value.entities.find((entity) => entity.isVendor)
+        Commands.require(!vendor || vendor.country === row.country,
+          `set your company's country in the ownership declaration to ${row.country}, the application country`)
+      }
       if (input.change.section === 'tax') {
         const problem = TaxIds.problem(row.country, input.change.value)
         Commands.require(!problem, problem ?? '')

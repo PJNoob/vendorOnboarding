@@ -2,7 +2,7 @@
 
 This independent Terraform root enables Vertex AI and Document AI in the existing vendor project, grants the existing worker identity access, and creates a Mumbai Enterprise Document OCR processor. It uses a separate state prefix and does not manage the application's database, network, cluster, or other Terraform stack.
 
-Gemini requests use Vertex AI and the worker's existing Workload Identity via Application Default Credentials. API keys and downloaded service-account private keys are unnecessary. The model is Google's shared publisher model; this configuration does not provision dedicated model-serving compute. OCR and model requests are billed by usage.
+Gemini requests use Vertex AI and the worker's existing Workload Identity via Application Default Credentials. API keys and downloaded service-account private keys are unnecessary. The model is Google's shared publisher model; this configuration does not provision dedicated model-serving compute. The application uses Gemini for OCR and field extraction. Model requests are billed by usage. The legacy Document AI processor remains provisioned for older releases.
 
 For subsequent changes, authenticate with Application Default Credentials and run from this directory:
 

@@ -8,9 +8,9 @@ const CHECK_TITLES: Record<string, string> = {
   ADVERSE_SCREENING: 'No public ban or sanction found for the vendor or its owners',
   BANK_BENEFICIARY: 'Bank beneficiary matches the company',
   CERTIFICATE_SCOPE: 'Certificate covers the requested site and activity',
-  COUNTRY_RESTRICTION: 'Supplier, bank and owners are outside banned countries',
+  COUNTRY_RESTRICTION: 'Supplier country is consistent, and supplier, bank and owners are outside banned countries',
   DOCUMENT_TYPE: 'Each file is the document it was uploaded as',
-  ENTITY_CONSISTENCY: 'Registration matches the company details',
+  ENTITY_CONSISTENCY: 'Registration matches the company name, ID and country',
   OWNERSHIP_SCREENING: 'Ownership chain is clear of sanctioned parties',
   TAX_PROFILE: 'Tax identifier is valid for the country and evidenced',
 }

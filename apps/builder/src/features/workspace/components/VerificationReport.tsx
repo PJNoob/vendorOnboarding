@@ -131,7 +131,7 @@ export function VerificationReport({ report, documents }: {
           <caption>Processing and evidence access</caption>
           <thead><tr><th scope="col">Step</th><th scope="col">Service or tool</th><th scope="col">Purpose</th></tr></thead>
           <tbody>
-            <tr><th scope="row">OCR</th><td>Google Document AI</td><td><code>POST /v1/extract/&#123;documentId&#125;</code> on the private document service extracts page text.</td></tr>
+            <tr><th scope="row">OCR</th><td>Gemini on Vertex AI</td><td><code>POST /v1/extract/&#123;documentId&#125;</code> on the private document service extracts page text.</td></tr>
             <tr><th scope="row">AI analysis</th><td>LangGraph and Gemini on Vertex AI</td><td><code>POST /v1/verify</code> on the private document service compares fields and records findings. Report version <code>{report.version}</code>.</td></tr>
             <tr><th scope="row">Case report</th><td><code>GET /api/v1/cases/get</code></td><td>Returns this saved report to authorized workspace roles.</td></tr>
             <tr><th scope="row">MCP evidence</th><td><code>POST /api/mcp</code></td><td><code>get_certificate_scope_evidence</code> and <code>get_screening_evidence</code> read saved evidence. The worker runs the analysis automatically.</td></tr>

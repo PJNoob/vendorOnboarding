@@ -220,3 +220,50 @@ def test_legal_name_normalization_accepts_legal_form_spellings():
     assert normalized('legal_name', 'Cedar Meridian QA Calibration Limited') == normalized('legal_name', 'CEDAR MERIDIAN QA CALIBRATION LTD.')
     assert normalized('legal_name', 'Smith & Sons L.L.C.') == normalized('legal_name', 'Smith and Sons LLC')
     assert normalized('legal_name', 'Acme Ltd') != normalized('legal_name', 'Acme Holdings Ltd')
+
+
+def country_request(declared='US'):
+    payload = request()
+    payload['expected'].append({'field': 'country', 'value': declared, 'rule': 'ENTITY_CONSISTENCY', 'kind': 'REGISTRATION'})
+    payload['documents'][0]['pages'][0]['text'] = 'Acme AB-123 incorporated in the State of Delaware'
+    return payload
+
+
+def country_provider(code='US', kind_doc='registration'):
+    source = provider()
+    source.fields[kind_doc] = source.fields[kind_doc] + [
+        field('country', code, quote='State of Delaware' if kind_doc == 'registration' else 'Acme 4567')]
+    return source
+
+
+def country_finding(report):
+    finding = next(f for f in report.findings if f.rule == 'ENTITY_CONSISTENCY')
+    return finding, next(c for c in finding.comparisons if c.field == 'country')
+
+
+def test_registration_country_matching_the_declared_country_passes():
+    finding, comparison = country_finding(run(country_request('US'), country_provider('US')))
+    assert finding.result == 'PASS'
+    assert comparison.status == 'MATCH' and comparison.observed == ['US']
+
+
+def test_registration_from_another_country_needs_review():
+    finding, comparison = country_finding(run(country_request('AE'), country_provider('US')))
+    assert finding.result == 'REVIEW'
+    assert 'registered in US, but the application declares AE' in finding.message
+    assert comparison.status == 'MISMATCH' and comparison.observed == ['US']
+
+
+def test_a_registration_without_a_printed_country_is_not_flagged():
+    finding, comparison = country_finding(run(country_request('US'), provider()))
+    assert finding.result == 'PASS'
+    assert comparison.status == 'MISSING_EVIDENCE'
+
+
+def test_country_on_other_documents_is_ignored_and_names_are_rejected():
+    # A bank letter naming the bank's country does not count as the vendor's country.
+    finding, comparison = country_finding(run(country_request('AE'), country_provider('US', 'bank')))
+    assert finding.result == 'PASS' and comparison.status == 'MISSING_EVIDENCE'
+    # A country name instead of an ISO code is unverifiable and sent to review.
+    finding, _ = country_finding(run(country_request('US'), country_provider('United States')))
+    assert finding.result == 'REVIEW'
