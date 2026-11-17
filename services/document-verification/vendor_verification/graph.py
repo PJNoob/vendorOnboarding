@@ -103,7 +103,7 @@ def build_graph(extractor: Extractor):
             for field in extracted.fields:
                 if field.field == 'country' and document.kind not in COUNTRY_KINDS:
                     continue
-                if not supported(document, field) or field.confidence < 0.85:
+                if not supported(document, field) or field.confidence < 0.5:
                     unresolved.update(FIELD_RULES[field.field])
                     continue
                 # Ownership declarations list other entities: do not compare their names
