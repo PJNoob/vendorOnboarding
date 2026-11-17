@@ -9,6 +9,7 @@ import { inputs } from '@neo/schemas'
 
 import { supplierRouter } from '@/features/supplier/api/router'
 import { Commands } from './Commands'
+import { demoIdentity } from './DemoIdentity'
 import { type Actor, Security } from './Security'
 import { SupplierApplicationService } from './SupplierApplicationService'
 import { TeamService } from './TeamService'
@@ -62,6 +63,27 @@ test('first-time supplier creates an accessible blank draft in Harbor, ignoring 
   assert.equal(mocks.audit.mock.calls[0].arguments[1], 'SUPPLIER_APPLICATION_CREATED')
   assert.equal(mocks.invite.mock.callCount(), 0)
   assert.equal(mocks.notify.mock.callCount(), 0)
+})
+
+test('local demo workspace receives self-started applications in the demo tenant', async () => {
+  const previous = { APP_URL: process.env.APP_URL, DEMO_AUTH: process.env.DEMO_AUTH }
+  process.env.DEMO_AUTH = 'true'
+  process.env.APP_URL = 'http://localhost:3000'
+  try {
+    const mocks = setup()
+    await SupplierApplicationService.create(actor, { ...input, idempotencyKey: '5c0f4f0e-6d1b-4c55-9a43-2f6f3f8a1b77' })
+    const tenantId = demoIdentity.tenantId
+    assert.equal(mocks.lock.mock.calls[0].arguments[0], tenantId)
+    assert.equal(mocks.policy.mock.calls[0].arguments[0]?.where?.tenantId, tenantId)
+    assert.equal(mocks.create.mock.calls[0].arguments[0]?.data.tenantId, tenantId)
+    assert.equal(mocks.submission.mock.calls[0].arguments[0]?.data.tenantId, tenantId)
+    assert.equal(mocks.access.mock.calls[0].arguments[0]?.create.tenantId, tenantId)
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
 })
 
 test('retrying a creation returns the original application; changed input requires a fresh key', async () => {
