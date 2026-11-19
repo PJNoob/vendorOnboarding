@@ -11,6 +11,10 @@ resource "google_sql_database_instance" "postgres" {
     disk_size         = 20
     disk_autoresize   = true
     disk_type         = "PD_SSD"
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
     backup_configuration {
       enabled                        = true
       point_in_time_recovery_enabled = true

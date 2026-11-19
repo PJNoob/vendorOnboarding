@@ -33,6 +33,19 @@ terraform plan -var='app_project_id=YOUR_UNIQUE_PROJECT_ID' -out=vendor.tfplan
 
 The saved plan and Terraform state can contain secrets, including Redis AUTH information. Keep them in restricted storage and never commit them. The state bucket must have restricted IAM and versioning enabled before use. Check the plan carefully for changes to existing Yojnapath resources. After the outstanding work, preflight, project move and plan review are complete, apply the saved plan with `terraform apply vendor.tfplan`. Project creation, HA SQL, Redis, extra nodes and load balancing incur charges.
 
+## Operator database login
+
+Terraform enables `cloudsql.iam_authentication` and registers
+`jaiswalpratham1234@gmail.com` as a `CLOUD_IAM_USER`, with the Cloud SQL Instance
+User and Cloud SQL Studio User IAM roles. Sign in to Google Cloud with that
+account, open Cloud SQL Studio, select `vendor_onboarding`, and choose IAM
+database authentication. No database password is required for this login.
+
+These IAM roles permit login; PostgreSQL schema and table privileges are managed
+separately. If a query reports `permission denied`, a database administrator must
+grant the required privileges to the quoted role `"jaiswalpratham1234@gmail.com"`.
+The application continues to use its existing built-in database account.
+
 ## 2. Create the application secret
 
 Terraform declares a Secret Manager secret named `vendor-app-config`; it does not create a secret version. After the app project exists, add a version in Google Cloud Console → Security → Secret Manager → `vendor-app-config` → **New version**. Paste one JSON object with the exact environment keys below. All values must be strings. The deploying identity needs `roles/secretmanager.secretAccessor` on this secret.
