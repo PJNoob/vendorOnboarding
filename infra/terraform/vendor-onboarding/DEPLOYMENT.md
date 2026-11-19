@@ -41,9 +41,10 @@ User and Cloud SQL Studio User IAM roles. Sign in to Google Cloud with that
 account, open Cloud SQL Studio, select `vendor_onboarding`, and choose IAM
 database authentication. No database password is required for this login.
 
-These IAM roles permit login; PostgreSQL schema and table privileges are managed
-separately. If a query reports `permission denied`, a database administrator must
-grant the required privileges to the quoted role `"jaiswalpratham1234@gmail.com"`.
+These IAM roles permit login. PostgreSQL SELECT grants are managed separately in
+`../database-access`, including default privileges for future application tables.
+Follow that module's README to plan and apply read access through the existing
+Cloud SQL Auth Proxy. Reconnect Studio and refresh Explorer after applying.
 The application continues to use its existing built-in database account.
 
 ## 2. Create the application secret
