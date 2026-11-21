@@ -290,6 +290,16 @@ export class Workspace extends Component<{ demoAuth?: boolean; countries: Countr
     const managing = role === 'ADMIN' || role === 'BUYER'
     const canReview = role === 'ADMIN' || role === 'REVIEWER'
     return <>
+      {detail.case.status === 'APPROVED' && (detail.approvedSupplierId
+        ? role === 'ADMIN' && this.form('Delete approved supplier', async (form) => {
+          if (form.get('confirmDelete') !== 'on') throw new Error('Confirm the approved supplier deletion.')
+          await this.api().cases.deleteSupplier.mutate({ ...version, supplierId: detail.approvedSupplierId! })
+          await this.open(version.caseId)
+          await this.refresh()
+          return 'Approved supplier deleted. You can submit and approve a new application with the same registration.'
+        }, <><p>Delete this supplier from the approved registry to reuse its registration on another application. This application, its documents, and decision history will be retained.</p>
+          <label className="checkbox-label"><input name="confirmDelete" type="checkbox" required /> I confirm I want to delete this approved supplier registration.</label></>)
+        : <p role="status">This approved supplier registration has been deleted. The application is retained as history. A new application can use the same registration.</p>)}
       {managing && ['DRAFT', 'INVITED'].includes(detail.case.status) && this.form('Reissue invitation', async () => {
         await this.api().invitations.reissue.mutate(version)
         await this.open(version.caseId)

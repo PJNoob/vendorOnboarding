@@ -187,3 +187,33 @@ test('issues with the same code identify their checks and show the appropriate e
   assert.match(admin, /Resolve issue/)
   assert.doesNotMatch(render('BUYER'), /Resolve issue/)
 })
+
+
+function renderRegistry(role: 'ADMIN' | 'BUYER' | 'REVIEWER' | 'COMPLIANCE' | 'AUDITOR', active: boolean, status: Output<'detail'>['case']['status'] = 'APPROVED') {
+  class RegistryWorkspace extends Workspace {
+    constructor(props: Workspace['props']) {
+      super(props)
+      this.state = { ...this.state, loading: false, email: 'viewer@example.test', tenantId: 'tenant',
+        memberships: [{ id: 'membership', tenantId: 'tenant', role }],
+        detail: { ...supplierDetail(status), ...(active ? { approvedSupplierId: 'supplier' } : {}) } }
+    }
+  }
+  return renderToStaticMarkup(createElement(RegistryWorkspace, { countries: [] }))
+}
+
+test('only an admin sees supplier deletion and must explicitly confirm it', () => {
+  const html = renderRegistry('ADMIN', true)
+  assert.match(html, /Delete approved supplier/)
+  assert.match(html, /<input(?=[^>]*name="confirmDelete")(?=[^>]*required="")[^>]*>/)
+  assert.match(html, /application, its documents, and decision history will be retained/)
+  for (const role of ['BUYER', 'REVIEWER', 'COMPLIANCE', 'AUDITOR'] as const) assert.doesNotMatch(renderRegistry(role, true), /Delete approved supplier|confirmDelete/)
+  assert.doesNotMatch(renderSupplier(supplierDetail('APPROVED')), /Delete approved supplier|confirmDelete/)
+  assert.doesNotMatch(renderRegistry('ADMIN', true, 'PENDING'), /Delete approved supplier|confirmDelete/)
+})
+
+test('deleted registrations show retained history and no delete button', () => {
+  const html = renderRegistry('ADMIN', false)
+  assert.match(html, /registration has been deleted/)
+  assert.match(html, /A new application can use the same registration/)
+  assert.doesNotMatch(html, /Delete approved supplier|confirmDelete/)
+})
