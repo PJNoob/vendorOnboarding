@@ -90,7 +90,7 @@ export class ReviewService {
         Commands.require(profile, 'company profile is unavailable')
         const registryKey = [profile.country, profile.jurisdiction, profile.registryId].map((value) => value.trim().toUpperCase()).join('/')
         const duplicate = await SupplierRepository.findFirst({ where: { registryKey, tenantId: actor.tenantId } }, tx)
-        Commands.require(!duplicate, 'a supplier with this registration already exists')
+        Commands.require(!duplicate, 'A supplier with this registration already exists. Ask an admin to open the approved application under Suppliers and delete its approved supplier registration before approving this application.')
         await SupplierRepository.create({ data: { approvedSubmissionId: snapshot.id, registryKey, tenantId: actor.tenantId } }, tx)
       } else {
         Commands.require(snapshot.issue_submission.filter((issue) => issue.ownerRole === 'COMPLIANCE' && !issue.resolvedAt)
@@ -106,6 +106,22 @@ export class ReviewService {
       await ReviewService.notify(actor, row.id, snapshot.id, decision.id, ReviewService.decisionText(input.outcome, input.rationale), tx)
       await Commands.audit(actor, status, row.id, tx, { decisionId: decision.id, submissionId: snapshot.id })
       return { id: decision.id, revision: row.revision + 1 }
+    })
+  }
+
+  static deleteSupplier(actor: Actor, input: Input<'deleteSupplier'>) {
+    Security.fresh(actor)
+    return Commands.execute(actor, 'cases.deleteSupplier', input, Commands.role(actor, ReviewService.ADMIN), async (tx) => {
+      const { row, snapshot } = await Commands.current(actor, input.caseId, tx)
+      Commands.revision(row.revision, input.expectedCaseRevision)
+      Commands.require(row.status === 'APPROVED', 'select an approved application')
+      const deleted = await SupplierRepository.deleteMany({ where: {
+        approvedSubmissionId: snapshot.id, id: input.supplierId, tenantId: actor.tenantId,
+      } }, tx)
+      Commands.require(deleted.count === 1, 'approved supplier is unavailable; refresh the case')
+      await ReviewService.touch(actor, row.id, tx)
+      await Commands.audit(actor, 'SUPPLIER_DELETED', row.id, tx, { submissionId: snapshot.id, supplierId: input.supplierId })
+      return { id: input.supplierId, revision: row.revision + 1 }
     })
   }
 

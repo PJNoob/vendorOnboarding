@@ -85,6 +85,7 @@ export const inputs = {
     category: z.enum(Values.ACTIVITIES), country: countryCode, requestedSite: site,
   }),
   decide: change.extend({ outcome: z.enum(Values.DECISIONS), rationale: message, submissionId: id }),
+  deleteSupplier: change.extend({ supplierId: id }),
   document: draft.extend({ documentId: id }),
   download: caseRef.extend({ documentId: id }),
   enroll: command.extend({ email: z.email({ error: 'Enter a valid mail' }), role: z.enum(Values.BUYER_ROLES) }),
@@ -161,6 +162,7 @@ export const outputs = {
     nextCursor: id.optional(), // Omitted on the last page.
   }),
   detail: z.strictObject({
+    approvedSupplierId: id.optional(),
     certificateScopeReview: certificateScopeSuggestion.optional(),
     previousCorrectionInstructions: z.array(z.string()).optional(),
     verificationReport: verificationReport.optional(),

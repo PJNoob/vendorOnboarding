@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, mock, test } from 'node:test'
-import { CaseAccessRepository, InvitationRepository, NotificationRepository, OnboardingCaseRepository, SubmissionRepository } from '@neo/prisma/repositories'
+import { CaseAccessRepository, InvitationRepository, NotificationRepository, OnboardingCaseRepository, SubmissionRepository, SupplierRepository } from '@neo/prisma/repositories'
 import { outputs } from '@neo/schemas'
 import { Commands } from './Commands'
 import { Queries } from './Queries'
@@ -128,4 +128,20 @@ test('a revision includes supplier correction instructions from the immediately 
   const detail = outputs.detail.parse(await Queries.detail(actor, 'case'))
   assert.deepEqual(detail.previousCorrectionInstructions, ['Upload a new certificate.'])
   assert.equal(previous.mock.callCount(), 1)
+})
+
+
+test('approved detail distinguishes an active registry entry from retained history', async () => {
+  const value = setup('BUYER')
+  value.row.status = 'APPROVED'
+  let registered = true
+  const lookup = mock.method(SupplierRepository, 'findFirst', async () => registered ? { id: 'supplier' } as never : null)
+  const actor = { id: 'viewer', tenantId: 'tenant', channel: Security.BUYER, verified: true } as Actor
+  assert.equal(outputs.detail.parse(await Queries.detail(actor, 'case')).approvedSupplierId, 'supplier')
+  assert.deepEqual(lookup.mock.calls[0].arguments[0], { select: { id: true }, where: { approvedSubmissionId: 'submission', tenantId: 'tenant' } })
+  registered = false
+  const history = outputs.detail.parse(await Queries.detail(actor, 'case'))
+  assert.equal(history.approvedSupplierId, undefined)
+  assert.equal(history.case.status, 'APPROVED')
+  assert.equal(history.decisions.length, 1)
 })

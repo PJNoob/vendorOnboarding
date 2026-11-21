@@ -1,6 +1,6 @@
 import {
   AuditEventRepository, BaseRepository, DocumentRepository, InvitationRepository, MembershipRepository, OnboardingCaseRepository,
-  CaseAccessRepository, NotificationRepository, SubmissionRepository,
+  CaseAccessRepository, NotificationRepository, SubmissionRepository, SupplierRepository,
 } from '@neo/prisma/repositories'
 import { type Input, type Output, Values } from '@neo/schemas'
 
@@ -133,9 +133,13 @@ export class Queries {
     }) : undefined
     const previousCorrections = [...new Set(previous?.issue_submission.flatMap(({ supplierMessage }) =>
       supplierMessage ? [supplierMessage] : []) ?? [])]
+    const approvedSupplier = row.status === 'APPROVED' ? await SupplierRepository.findFirst({
+      select: { id: true }, where: { approvedSubmissionId: snapshot.id, tenantId: scoped.tenantId },
+    }) : null
     const scopeReview = privileged ? await ReviewEvidence.scopeSuggestion(current) : undefined
     const agentReport = privileged && row.status !== 'SUBMITTED' ? await Queries.agentReport(current) : undefined
     return {
+      ...(approvedSupplier ? { approvedSupplierId: approvedSupplier.id } : {}),
       ...(scopeReview ? { certificateScopeReview: scopeReview } : {}),
       ...(previousCorrections.length ? { previousCorrectionInstructions: previousCorrections } : {}),
       ...(agentReport ? { verificationReport: agentReport } : {}),
