@@ -20,6 +20,8 @@ USER root
 # Seed for the worker's /tmp/clamav; a new SIGNATURE_DATE value rebuilds this layer, and pods refresh signatures at runtime.
 ARG SIGNATURE_DATE=unset
 RUN mkdir /opt/clamav-seed && chown clamav:clamav /opt/clamav-seed && freshclam --datadir=/opt/clamav-seed && chmod -R a+rX /opt/clamav-seed
+# The worker runs as node and logs to stdout; the distro log path is root-owned.
+RUN sed -i '/^UpdateLogFile /d' /etc/clamav/freshclam.conf
 USER node
 EXPOSE 3000
 CMD ["pnpm", "--filter", "@neo/builder", "start"]
