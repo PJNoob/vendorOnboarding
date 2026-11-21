@@ -9,7 +9,7 @@ described in output/Demo_Video_Script.md:
   C  wrong document + certificate scope: bank slot holds an ISO certificate; scope omits the site
   D  hidden sanctioned owner: 80% parent is 60% owned by FIXTURE-BLOCKED-001 (demo screening)
 
-Run:  python3 scripts/demo/build_demo_documents.py  (writes output/demo_documents/)
+Run:  python3 scripts/demo/build_demo_documents.py  (writes output/demo_documents/ and output/demo_documents_set2/)
 """
 from pathlib import Path
 
@@ -178,7 +178,7 @@ def ownership(c):
         Paragraph('Ownership chain', SUB),
         Paragraph('Each row lists a shareholder and the percentage of equity it holds. Holdings of every entity add up to 100%.', BODY),
         Spacer(1, 6),
-        *grid(['Shareholder', 'Country', 'Registry ID', 'Holding'], rows, [2.2 * inch, 0.7 * inch, 1.9 * inch, 2.2 * inch]),
+        *grid(['Shareholder', 'Country', 'Registry ID', 'Holding'], rows, [2.2 * inch, 0.85 * inch, 1.85 * inch, 2.1 * inch]),
         Paragraph('I declare that this is a complete and accurate statement of the direct and indirect owners of the vendor.', BODY),
         *signature(c['signatory'], 'Authorized signatory', '2026-10-08'),
     ]
@@ -221,13 +221,60 @@ D = dict(
 )
 
 
+# Second set: same four scenarios, different companies, sites, identifiers and addresses.
+A2 = dict(
+    legal_name='Silverline Gauge Calibration LLC', registry_id='6248817', entity_type='Limited liability company',
+    formed='2016-08-22', address='8601 Ranch Road 2222, Building 3, Austin, TX 78730', ein='74-2918365',
+    signatory='Arjun Mehta', site='Austin Calibration Lab',
+    bank=dict(name='Lone Star Commercial Bank', account='3318 6604 2751', routing='114987652', swift='LSCBUS44',
+              opened='2016-10-03', officer='Rebecca Nguyen'),
+    owners=[dict(name='Silverline Instruments Group Inc.', country='US', registry='4902266',
+                 owns='100% of Silverline Gauge Calibration LLC')],
+)
+B2 = dict(
+    legal_name='Pinecrest Measurement Systems LLC', registry_id='7034519', entity_type='Limited liability company',
+    formed='2018-04-16', address='1201 Third Avenue, Suite 2600, Seattle, WA 98101', ein='91-6037428',
+    signatory='Hannah Lowe', site='Seattle Calibration Lab',
+)
+C2 = dict(
+    legal_name='Ridgeway Instruments Inc.', registry_id='6115802', entity_type='Corporation',
+    formed='2012-02-07', address='2600 Michelson Drive, Suite 900, Irvine, CA 92612', ein='33-8172046',
+    signatory='Daniel Kwan', site='Irvine Calibration Lab',
+    owners=[dict(name='Daniel Kwan', country='US', owns='100% of Ridgeway Instruments Inc.')],
+)
+D2 = dict(
+    legal_name='Northgate Analytical Labs LLC', registry_id='7356021', entity_type='Limited liability company',
+    formed='2020-01-27', address='100 Pine Street, Suite 1250, San Francisco, CA 94111', ein='94-3725106',
+    signatory='Laura Bennett', site='San Francisco Calibration Lab',
+    bank=dict(name='Bayshore Trust Bank', account='6025 9913 4480', routing='121654329', swift='BSTBUS6S',
+              opened='2020-03-02', officer='Michael Chen'),
+    owners=[
+        dict(name='Altamira Holdings Ltd', country='GB', registry='09874521', owns='80% of Northgate Analytical Labs LLC'),
+        dict(name='Redwood Growth LLC', country='US', registry='5188340', owns='20% of Northgate Analytical Labs LLC'),
+        dict(name='Kestrel Offshore Trading Ltd', country='CY', registry='FIXTURE-BLOCKED-001',
+             owns='60% of Altamira Holdings Ltd'),
+        dict(name='Pacific Equity Partners LP', country='US', registry='4029318', owns='40% of Altamira Holdings Ltd'),
+    ],
+)
+
+SETS = [
+    dict(root=OUT, cases=(A, B, C, D), folders=('A_happy_path_Cedar_Meridian', 'B_tax_format_Lakeshore',
+                                                 'C_wrong_document_Northwind', 'D_sanctioned_owner_Blue_Harbor'),
+         other_lab=dict(site='Trenton Calibration Lab', address='1 West State Street, Trenton, NJ 08608'), omitted='Edison'),
+    dict(root=OUT.parent / 'demo_documents_set2', cases=(A2, B2, C2, D2),
+         folders=('A_happy_path_Silverline', 'B_tax_format_Pinecrest', 'C_wrong_document_Ridgeway',
+                  'D_sanctioned_owner_Northgate'),
+         other_lab=dict(site='San Diego Calibration Lab', address='600 B Street, San Diego, CA 92101'), omitted='Irvine'),
+]
+
+
 def lab(case, range_text='Length 0 to 1 m; pressure 0 to 70 MPa; temperature -40 to 650 °C'):
     return dict(site=case['site'], address=case['address'], range=range_text)
 
 
-def main():
-    a, b, c, d = (OUT / name for name in ('A_happy_path_Cedar_Meridian', 'B_tax_format_Lakeshore',
-                                         'C_wrong_document_Northwind', 'D_sanctioned_owner_Blue_Harbor'))
+def build_set(root, cases, folders, other_lab, omitted):
+    A, B, C, D = cases
+    a, b, c, d = (root / name for name in folders)
     build(a / 'A1_REGISTRATION_certificate_of_formation.pdf', registration(A))
     build(a / 'A2_BANK_account_confirmation_letter.pdf', bank_letter(A))
     build(a / 'A3_TAX_form_W9.pdf', w9(A))
@@ -237,14 +284,13 @@ def main():
     build(b / 'B1_REGISTRATION_certificate_of_formation.pdf', registration(B))
     build(b / 'B2_TAX_form_W9.pdf', w9(B))
 
-    other_lab = dict(site='Trenton Calibration Lab', address='1 West State Street, Trenton, NJ 08608',
-                     range='Pressure 0 to 70 MPa; temperature -40 to 650 °C')
+    other = dict(other_lab, range='Pressure 0 to 70 MPa; temperature -40 to 650 °C')
     build(c / 'C1_REGISTRATION_certificate_of_formation.pdf', registration(C))
     # Uploaded in the BANK slot on purpose: an accreditation certificate, no account details.
     build(c / 'C2_upload_as_BANK_iso_certificate_WRONG_DOCUMENT.pdf', certificate(C, [], annex=False))
     build(c / 'C3_TAX_form_W9.pdf', w9(C))
-    # Scope covers Trenton only, not the requested Edison site.
-    build(c / 'C4_CERTIFICATE_iso17025_scope_omits_Edison.pdf', certificate(C, [other_lab]))
+    # Scope covers another lab only, not the requested site.
+    build(c / f'C4_CERTIFICATE_iso17025_scope_omits_{omitted}.pdf', certificate(C, [other]))
     build(c / 'C5_OWNERSHIP_declaration.pdf', ownership(C))
 
     build(d / 'D1_REGISTRATION_certificate_of_formation.pdf', registration(D))
@@ -252,7 +298,12 @@ def main():
     build(d / 'D3_TAX_form_W9.pdf', w9(D))
     build(d / 'D4_CERTIFICATE_iso17025_with_scope.pdf', certificate(D, [lab(D)]))
     build(d / 'D5_OWNERSHIP_declaration_with_blocked_parent.pdf', ownership(D))
-    print(f'Wrote demo documents to {OUT}')
+    print(f'Wrote demo documents to {root}')
+
+
+def main():
+    for demo_set in SETS:
+        build_set(**demo_set)
 
 
 if __name__ == '__main__':
